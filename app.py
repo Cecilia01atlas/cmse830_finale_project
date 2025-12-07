@@ -777,8 +777,13 @@ Trend lines (in red) summarize the dominant linear relationship.
 """)
 
     def scatter_pretty(x_var, y_var, sample=3000):
-        df_temp = df_corr[[x_var, y_var]].dropna()  # <-- FIX
+        # Use numeric-cleaned dataframe
+        df_temp = df_corr_numeric[[x_var, y_var]].copy()
 
+        # Drop any remaining NaNs
+        df_temp = df_temp.dropna()
+
+        # Sample for performance
         if len(df_temp) > sample:
             df_temp = df_temp.sample(sample, random_state=42)
 
@@ -803,10 +808,12 @@ Trend lines (in red) summarize the dominant linear relationship.
                 line=dict(width=0.5, color="darkblue"),
             )
         )
+
         fig.update_layout(
             plot_bgcolor="white",
             title_x=0.5,
         )
+
         st.plotly_chart(fig, use_container_width=True)
 
     scatter_pretty("AT_21", "T_25")
@@ -956,10 +963,6 @@ separately by month. This highlights **seasonal structure** in the SST–air tem
         st.warning(
             "AT_21 or T_25 is missing — cannot compute binned SST vs air temperature."
         )
-
-    st.write("T_25 dtype:", df_corr["T_25"].dtype)
-    st.write("AT_21 dtype:", df_corr["AT_21"].dtype)
-    st.write("Valid AT_21–T_25 pairs:", df_corr[["AT_21", "T_25"]].dropna().shape)
 
 
 # =====================================================
