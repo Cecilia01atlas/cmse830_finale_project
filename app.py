@@ -211,17 +211,13 @@ if choice == "Overview":
 elif choice == "Missingness":
     st.title("🚧 Missingness Analysis")
     st.markdown("""
-    Long-term environmental datasets often contain **missing values** due to instrument failure,
-    weather disruptions, or transmission gaps.  
-    Before performing modeling or anomaly detection, it's crucial to explore what is missing
-    and apply a robust imputation method.
+    Long climate records often contain **missing measurements**, especially at certain depths or during sensor outages.
+    Understanding these gaps is essential before doing imputation or trend analysis.
     """)
 
-    df = st.session_state.get("df_original", df)  # keep original stored once
-
-    # -----------------------------
-    # Missingness Table
-    # -----------------------------
+    # =====================================================
+    # 1) Missingness Summary Table
+    # =====================================================
     with st.expander("📋 Missingness Summary Table"):
         summary_table = pd.DataFrame(
             {
@@ -232,160 +228,90 @@ elif choice == "Missingness":
 
         st.dataframe(summary_table)
 
-    # -----------------------------
-    # Missingness Heatmap
-    # -----------------------------
+        # ---- Detect variables with too many missing values ----
+        missing_pct = df.isna().mean()
+
+        too_missing = missing_pct[missing_pct > 0.70]  # >70% missing
+
+        if len(too_missing) > 0:
+            st.warning(
+                "⚠️ **Variables with >70% missing values** — recommended to exclude:\n\n"
+                + "\n".join(
+                    [
+                        f"- **{col}** ({pct:.1%} missing)"
+                        for col, pct in too_missing.items()
+                    ]
+                )
+            )
+            st.markdown("""
+            Depths **15 m** and **175 m** are especially sparse in the TAO dataset.
+            These variables can distort imputation and correlation results and should be removed from analysis.
+            """)
+
+        # ---- ENSO Coverage Warning ----
+        if "ANOM" in df.columns:
+            enso_valid_dates = df[df["ANOM"].notna()]["date"]
+
+            if len(enso_valid_dates) > 0:
+                start_enso = enso_valid_dates.min().year
+                end_enso = enso_valid_dates.max().year
+
+                st.info(
+                    f"📌 **ENSO Index Available:** {start_enso} → {end_enso}\n\n"
+                    f"ENSO (`ANOM`) values only exist until **{end_enso}**. "
+                    "ENSO-colored plots and anomaly analysis will automatically stop at this year."
+                )
+            else:
+                st.error(
+                    "❌ The ENSO index has no valid values — ENSO analysis will be skipped."
+                )
+
+    # =====================================================
+    # 2) Missingness Heatmap
+    # =====================================================
     with st.expander("🌡 Missingness Heatmap"):
         st.markdown("""
-        The heatmap below shows missing values (yellow = missing),
-        aligned over time. Each row corresponds to a feature.
+        The heatmap below shows missingness over time  
+        (**yellow = missing**, **dark = present**).
         """)
 
-        cols_for_heatmap = [col for col in df.columns if col not in ["year", "month"]]
+        cols_for_heatmap = [c for c in df.columns if c not in ["year", "month"]]
 
-        nan_array = (
-            df[cols_for_heatmap].isna().astype(int).to_numpy().T
-        )  # transpose here
+        nan_array = df[cols_for_heatmap].isna().astype(int).to_numpy().T
 
-        # HIGH DPI + SHARP EDGES
+        # High-DPI sharp rendering
         fig, ax = plt.subplots(figsize=(30, 15), dpi=150)
 
-        # pcolormesh gives cleaner boundaries for big grids
         mesh = ax.pcolormesh(
             nan_array,
             cmap="cividis",
-            shading="nearest",  # <-- SHARP
+            shading="nearest",  # Sharp pixels, no blur
         )
 
-        ax.set_title("Missing Values Heatmap (1 = Missing)", fontsize=24, pad=20)
-        ax.set_xlabel("Time Index", fontsize=20)
-        ax.set_ylabel("Features", fontsize=20)
+        ax.set_title("Missing Values Heatmap (1 = Missing)", fontsize=22, pad=20)
+        ax.set_ylabel("Features", fontsize=18)
+        ax.set_xlabel("Date", fontsize=18)
 
-        # Y-axis labels (features)
+        # Y-axis feature labels
         ax.set_yticks(np.arange(len(cols_for_heatmap)) + 0.5)
         ax.set_yticklabels(cols_for_heatmap, fontsize=12)
 
-        # X-axis ticks (time)
+        # Time ticks along X-axis
         n_rows = nan_array.shape[1]
-        n_ticks = 10  # fewer, clearer ticks
-        tick_positions = np.linspace(0, n_rows - 1, n_ticks).astype(int)
-        tick_labels = df.loc[tick_positions, "date"].dt.strftime("%Y-%m-%d")
+        n_ticks = 12  # nice readable number
+        tick_pos = np.linspace(0, n_rows - 1, n_ticks).astype(int)
+        tick_labels = df.loc[tick_pos, "date"].dt.strftime("%Y-%m-%d")
 
-        ax.set_xticks(tick_positions + 0.5)
+        ax.set_xticks(tick_pos + 0.5)
         ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=12)
 
-        # Add colorbar
+        # Colorbar
         cbar = fig.colorbar(mesh, ax=ax)
         cbar.set_label("Missingness", fontsize=18)
         cbar.ax.tick_params(labelsize=12)
 
         st.pyplot(fig)
 
-    # -----------------------------
-    # RF-MICE IMPUTATION
-    # -----------------------------
-    st.subheader("🤖 Random Forest MICE Imputation")
-
-    st.markdown("""
-    This imputation method uses **Iterative Imputation** with **Random Forest regressors**,  
-    allowing each variable to be predicted from all others.  
-    This method handles nonlinear relationships and works well for environmental datasets.
-    """)
-
-    if st.button("Run Imputation"):
-        # from sklearn.experimental import enable_iterative_imputer
-        from sklearn.impute import IterativeImputer
-        from sklearn.ensemble import RandomForestRegressor
-
-        # Variables to impute
-        columns_to_impute = [
-            "WU_422",
-            "WV_423",
-            "RH_910",
-            "AT_21",
-            "temp_1m",
-            "temp_10m",
-            "temp_20m",
-            "temp_50m",
-            "temp_75m",
-            "temp_100m",
-            "temp_150m",
-            "temp_175m",
-            "temp_200m",
-            "temp_250m",
-            "T_25",
-        ]
-
-        missing_mask = df[columns_to_impute].isna()
-
-        # Remove non-numeric columns
-        non_numeric_cols = df.select_dtypes(exclude=["float", "int"]).columns
-        numeric_df = df.drop(columns=non_numeric_cols)
-
-        rf = RandomForestRegressor(
-            n_estimators=50, max_depth=10, random_state=42, n_jobs=-1
-        )
-
-        imputer = IterativeImputer(estimator=rf, max_iter=5, random_state=42)
-
-        df_imputed = pd.DataFrame(
-            imputer.fit_transform(numeric_df), columns=numeric_df.columns
-        )
-
-        # Re-add date/year/month columns
-        for col in non_numeric_cols:
-            df_imputed[col] = df[col]
-
-        # Store imputed version
-        st.session_state["df"] = df_imputed.copy()
-
-        st.success("Imputation completed successfully!")
-
-        # -----------------------------
-        # Plot Original vs Imputed
-        # -----------------------------
-        st.subheader("📊 Original vs Imputed Values")
-
-        pretty_names = {
-            "WU_422": "Zonal Wind (m/s)",
-            "WV_423": "Meridional Wind (m/s)",
-            "RH_910": "Relative Humidity (%)",
-            "AT_21": "Air Temperature (°C)",
-            "T_25": "Sea Surface Temperature (°C)",
-            "temp_1m": "Temperature at 1m (°C)",
-            "temp_10m": "Temperature at 10m (°C)",
-            "temp_20m": "Temperature at 20m (°C)",
-            "temp_50m": "Temperature at 50m (°C)",
-            "temp_75m": "Temperature at 75m (°C)",
-            "temp_100m": "Temperature at 100m (°C)",
-            "temp_150m": "Temperature at 150m (°C)",
-            "temp_175m": "Temperature at 175m (°C)",
-            "temp_200m": "Temperature at 200m (°C)",
-            "temp_250m": "Temperature at 250m (°C)",
-        }
-
-        for col in columns_to_impute:
-            fig, ax = plt.subplots(figsize=(14, 4))
-
-            ax.plot(df["date"], df[col], alpha=0.4, label="Original")
-            ax.scatter(
-                df.loc[missing_mask[col], "date"],
-                df_imputed.loc[missing_mask[col], col],
-                s=10,
-                color="orange",
-                label="Imputed",
-            )
-
-            ax.set_title(f"{pretty_names.get(col, col)} — Original vs Imputed")
-            ax.set_xlabel("Date")
-            ax.set_ylabel(pretty_names.get(col, col))
-            ax.legend()
-            ax.grid(alpha=0.3)
-
-            st.pyplot(fig)
-
-        st.write("Missing AFTER imputation:")
-        st.write(df_imputed[columns_to_impute].isna().sum())
 
 # =====================================================
 # Temporal Coverage
