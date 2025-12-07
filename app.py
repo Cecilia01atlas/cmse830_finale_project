@@ -957,6 +957,10 @@ separately by month. This highlights **seasonal structure** in the SST–air tem
             "AT_21 or T_25 is missing — cannot compute binned SST vs air temperature."
         )
 
+    st.write("T_25 dtype:", df_corr["T_25"].dtype)
+    st.write("AT_21 dtype:", df_corr["AT_21"].dtype)
+    st.write("Valid AT_21–T_25 pairs:", df_corr[["AT_21", "T_25"]].dropna().shape)
+
 
 # =====================================================
 # Temperature Profiles
