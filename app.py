@@ -325,6 +325,7 @@ elif choice == "Missingness":
 
     if st.button("Run Imputation"):
         # from sklearn.experimental import enable_iterative_imputer
+        from sklearn.experimental import enable_iterative_imputer
         from sklearn.impute import IterativeImputer
         from sklearn.ensemble import RandomForestRegressor
 
