@@ -312,70 +312,101 @@ elif choice == "Missingness":
 
         st.pyplot(fig)
 
-    # -----------------------------
-    # RF-MICE IMPUTATION
-    # -----------------------------
-    st.subheader("🤖 Random Forest MICE Imputation")
+    # =====================================================
+# Tab 2b: RF-MICE Imputation
+# =====================================================
+elif choice == "Imputation":
+    st.title("🤖 Random Forest MICE Imputation")
 
     st.markdown("""
-    This imputation method uses **Iterative Imputation** with **Random Forest regressors**,  
-    allowing each variable to be predicted from all others.  
-    This method handles nonlinear relationships and works well for environmental datasets.
+    This section uses **Iterative Imputation** with a **Random Forest model**.
+    Each variable with missing data is predicted using all other available variables.
+    
+    This method handles nonlinear relationships and is well-suited for climate data.
     """)
 
+    # ---------------------------------------------------------
+    # Step 1 — Variables to impute (EXCLUDING high-missing ones)
+    # ---------------------------------------------------------
+    variables_to_exclude = ["temp_15m", "temp_175m"]  # remove problematic depths
+
+    columns_to_impute = [
+        "WU_422",
+        "WV_423",
+        "RH_910",
+        "AT_21",
+        "temp_1m",
+        "temp_10m",
+        "temp_20m",
+        "temp_50m",
+        "temp_75m",
+        "temp_100m",
+        "temp_150m",
+        "temp_200m",
+        "temp_250m",
+        "T_25",
+    ]
+
+    # Remove columns that shouldn't be imputed
+    columns_to_impute = [c for c in columns_to_impute if c not in variables_to_exclude]
+    # ENSO index should NEVER be imputed
+    if "ANOM" in columns_to_impute:
+        columns_to_impute.remove("ANOM")
+
+    st.write("### Variables selected for imputation:")
+    st.write(columns_to_impute)
+
+    # ---------------------------------------------------------
+    # Step 2 — Run Imputation
+    # ---------------------------------------------------------
     if st.button("Run Imputation"):
-        # from sklearn.experimental import enable_iterative_imputer
-        from sklearn.experimental import enable_iterative_imputer
-        from sklearn.impute import IterativeImputer
-        from sklearn.ensemble import RandomForestRegressor
+        st.info("⏳ Imputation in progress... This may take **10–30 seconds**.")
 
-        # Variables to impute
-        columns_to_impute = [
-            "WU_422",
-            "WV_423",
-            "RH_910",
-            "AT_21",
-            "temp_1m",
-            "temp_10m",
-            "temp_20m",
-            "temp_50m",
-            "temp_75m",
-            "temp_100m",
-            "temp_150m",
-            "temp_175m",
-            "temp_200m",
-            "temp_250m",
-            "T_25",
-        ]
+        with st.spinner("Running Random Forest MICE imputation..."):
+            # Enable IterativeImputer
+            from sklearn.experimental import enable_iterative_imputer
+            from sklearn.impute import IterativeImputer
+            from sklearn.ensemble import RandomForestRegressor
 
-        missing_mask = df[columns_to_impute].isna()
+            # Save original reference
+            df_original = df.copy()
 
-        # Remove non-numeric columns
-        non_numeric_cols = df.select_dtypes(exclude=["float", "int"]).columns
-        numeric_df = df.drop(columns=non_numeric_cols)
+            # Mask missing values for each column
+            missing_mask = df_original[columns_to_impute].isna()
 
-        rf = RandomForestRegressor(
-            n_estimators=50, max_depth=10, random_state=42, n_jobs=-1
-        )
+            # Remove non-numeric columns (date, year, month)
+            non_numeric_cols = df_original.select_dtypes(
+                exclude=["float", "int"]
+            ).columns
+            numeric_df = df_original.drop(columns=non_numeric_cols)
 
-        imputer = IterativeImputer(estimator=rf, max_iter=5, random_state=42)
+            # Random Forest model
+            rf = RandomForestRegressor(
+                n_estimators=50, max_depth=10, n_jobs=-1, random_state=42
+            )
 
-        df_imputed = pd.DataFrame(
-            imputer.fit_transform(numeric_df), columns=numeric_df.columns
-        )
+            # Build the imputer
+            imputer = IterativeImputer(estimator=rf, max_iter=5, random_state=42)
 
-        # Re-add date/year/month columns
-        for col in non_numeric_cols:
-            df_imputed[col] = df[col]
+            # Fit and transform
+            df_imp_numeric = pd.DataFrame(
+                imputer.fit_transform(numeric_df), columns=numeric_df.columns
+            )
 
-        # Store imputed version
-        st.session_state["df"] = df_imputed.copy()
+            # Reattach non-numeric columns
+            df_imputed = pd.concat(
+                [df_imp_numeric, df_original[non_numeric_cols]], axis=1
+            )
 
-        st.success("Imputation completed successfully!")
+            # Save to Streamlit session
+            st.session_state["df"] = df_imputed.copy()
 
-        # -----------------------------
-        # Plot Original vs Imputed
-        # -----------------------------
+        st.success("✅ Imputation completed successfully!")
+
+        # ---------------------------------------------------------
+        # Step 3 — Plot Original vs Imputed Values
+        # ---------------------------------------------------------
+
         st.subheader("📊 Original vs Imputed Values")
 
         pretty_names = {
@@ -384,26 +415,26 @@ elif choice == "Missingness":
             "RH_910": "Relative Humidity (%)",
             "AT_21": "Air Temperature (°C)",
             "T_25": "Sea Surface Temperature (°C)",
-            "temp_1m": "Temperature at 1m (°C)",
-            "temp_10m": "Temperature at 10m (°C)",
-            "temp_20m": "Temperature at 20m (°C)",
-            "temp_50m": "Temperature at 50m (°C)",
-            "temp_75m": "Temperature at 75m (°C)",
-            "temp_100m": "Temperature at 100m (°C)",
-            "temp_150m": "Temperature at 150m (°C)",
-            "temp_175m": "Temperature at 175m (°C)",
-            "temp_200m": "Temperature at 200m (°C)",
-            "temp_250m": "Temperature at 250m (°C)",
+            "temp_1m": "Temp @1m",
+            "temp_10m": "Temp @10m",
+            "temp_20m": "Temp @20m",
+            "temp_50m": "Temp @50m",
+            "temp_75m": "Temp @75m",
+            "temp_100m": "Temp @100m",
+            "temp_150m": "Temp @150m",
+            "temp_200m": "Temp @200m",
+            "temp_250m": "Temp @250m",
         }
 
         for col in columns_to_impute:
             fig, ax = plt.subplots(figsize=(14, 4))
 
-            ax.plot(df["date"], df[col], alpha=0.4, label="Original")
+            ax.plot(df_original["date"], df_original[col], alpha=0.4, label="Original")
+
             ax.scatter(
-                df.loc[missing_mask[col], "date"],
+                df_original.loc[missing_mask[col], "date"],
                 df_imputed.loc[missing_mask[col], col],
-                s=10,
+                s=12,
                 color="orange",
                 label="Imputed",
             )
@@ -416,43 +447,19 @@ elif choice == "Missingness":
 
             st.pyplot(fig)
 
-        st.write("Missing AFTER imputation:")
+        # ---------------------------------------------------------
+        # Step 4 — Missingness Report
+        # ---------------------------------------------------------
+        st.subheader("🧮 Missing Values After Imputation")
+
+        st.write("**Before:**")
+        st.write(df_original[columns_to_impute].isna().sum())
+
+        st.write("**After:**")
         st.write(df_imputed[columns_to_impute].isna().sum())
 
-# =====================================================
-# Temporal Coverage
-# =====================================================
+        st.success("🎉 All selected variables successfully imputed!")
 
-elif choice == "Temporal Coverage":
-    st.title("📆 Temporal Coverage of Observations")
-
-    df["year_month"] = (
-        df["year"].astype(str) + "-" + df["month"].astype(str).str.zfill(2)
-    )
-    ym_counts = df["year_month"].value_counts().sort_index()
-
-    fig, ax = plt.subplots(figsize=(15, 5))
-    ym_counts.plot(ax=ax)
-    plt.xticks(rotation=90)
-    ax.set_title("Number of Observations per Year-Month")
-    st.pyplot(fig)
-
-    st.subheader("📅 SST Over Time (Colored by ENSO Index)")
-    if "ANOM" in df.columns:
-        anom_abs = max(abs(df["ANOM"].min()), abs(df["ANOM"].max()))
-        fig_scatter = px.scatter(
-            df,
-            x="date",
-            y="T_25",
-            color="ANOM",
-            color_continuous_scale="RdBu_r",
-            opacity=0.5,
-            title="Sea Surface Temperature Over Time",
-        )
-        fig_scatter.update_layout(coloraxis=dict(cmin=-anom_abs, cmax=anom_abs, cmid=0))
-        st.plotly_chart(fig_scatter, use_container_width=True)
-    else:
-        st.warning("ENSO index not found in dataset.")
 
 # =====================================================
 # Correlation Study
