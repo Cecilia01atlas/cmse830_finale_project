@@ -467,37 +467,39 @@ elif choice == "Temporal Coverage":
     st.header("📆 Temporal Coverage & ENSO Influence")
     st.markdown("""
 This tab explores how **ocean and atmospheric variables evolve over time**,  
-placing special emphasis on the role of **ENSO (El Niño / La Niña)**.
+with special emphasis on **ENSO (El Niño / La Niña)** impacts.
 
-- 🔴 **El Niño** → Warm anomalies  
-- 🔵 **La Niña** → Cool anomalies  
+- 🔴 **El Niño** → warm anomalies  
+- 🔵 **La Niña** → cool anomalies  
 
-If you have run the **RF-MICE Imputation**, this tab will automatically use the cleaned dataset.
+If you run the **RF-MICE Imputation**, this tab will automatically switch to the cleaned dataset.
 """)
 
     # --------------------------------------------------
-    # Select dataset: imputed if available, otherwise original
+    # 1) Determine which dataset to use
     # --------------------------------------------------
-    if "df" in st.session_state:
+    df_original = df.copy()  # original cached dataset
+
+    if "df" in st.session_state and "T_25" in st.session_state["df"].columns:
         df = st.session_state["df"].copy()
         st.info("Using **imputed dataset** ✔")
     else:
-        df = df.copy()  # <-- Make sure this matches your variable name
+        df = df_original.copy()
         st.warning("Using **original dataset** (imputation not run yet).")
 
     # --------------------------------------------------
-    # Ensure datetime column exists and is clean
+    # 2) Ensure datetime exists and is sorted
     # --------------------------------------------------
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.sort_values("date")
 
-    # =====================================================
-    # ENSO-Colored SST Scatter
-    # =====================================================
+    # --------------------------------------------------
+    # 3) ENSO-Colored SST Scatter
+    # --------------------------------------------------
     st.subheader("🌡 SST Over Time (Colored by ENSO Index)")
 
     if "ANOM" not in df.columns or df["ANOM"].isna().all():
-        st.error("ENSO index (ANOM) not available in dataset.")
+        st.error("ENSO index (ANOM) is not available.")
     else:
         df_plot = df.dropna(subset=["T_25", "ANOM"])
         anom_abs = max(abs(df_plot["ANOM"].min()), abs(df_plot["ANOM"].max()))
@@ -508,10 +510,11 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
             y="T_25",
             color="ANOM",
             color_continuous_scale="RdBu_r",
-            opacity=0.5,
-            title="Sea Surface Temperature Over Time (Colored by ENSO Index)",
-            labels={"T_25": "Sea Surface Temperature (°C)"},
+            opacity=0.55,
+            labels={"T_25": "Sea Surface Temperature (°C)", "ANOM": "ENSO Index"},
+            title="Sea Surface Temperature Over Time (ENSO-Colored)",
         )
+
         fig.update_layout(
             coloraxis=dict(
                 cmin=-anom_abs,
@@ -523,36 +526,38 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
             template="plotly_white",
             title_x=0.5,
         )
-        fig.update_traces(marker=dict(size=4))
 
+        fig.update_traces(marker=dict(size=5))
         st.plotly_chart(fig, use_container_width=True)
 
-    # =====================================================
-    # Multi-Depth SST Time Series
-    # =====================================================
+    # --------------------------------------------------
+    # 4) Multi-Depth SST Time Series
+    # --------------------------------------------------
     st.subheader("🌊 Ocean Temperature at Multiple Depths Over Time")
 
-    # drop depths with nearly all missing values (15m, 175m, etc.)
+    # Keep only meaningful depth variables
     depth_cols = [col for col in df.columns if col.startswith("temp_")]
-    depth_cols = [
-        col for col in depth_cols if df[col].notna().sum() > 500
-    ]  # keep usable depths
+    depth_cols = [col for col in depth_cols if df[col].notna().sum() > 500]
 
     if len(depth_cols) == 0:
         st.error("No usable depth-based temperature variables found.")
     else:
+        import itertools
+
+        color_cycle = itertools.cycle(px.colors.sequential.Viridis)
+
         depths = [int(col.split("_")[1].replace("m", "")) for col in depth_cols]
-        colors = px.colors.sequential.Viridis[: len(depth_cols)]
 
         fig = go.Figure()
-        for i, (col, depth) in enumerate(zip(depth_cols, depths)):
+
+        for col, depth in zip(depth_cols, depths):
             fig.add_trace(
                 go.Scatter(
                     x=df["date"],
                     y=df[col],
                     mode="lines",
                     name=f"{depth} m",
-                    line=dict(color=colors[i], width=1.8),
+                    line=dict(color=next(color_cycle), width=1.8),
                 )
             )
 
@@ -568,15 +573,15 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
 
         st.plotly_chart(fig, use_container_width=True)
 
-    # =====================================================
-    # Interactive Vertical Temperature Profile
-    # =====================================================
+    # --------------------------------------------------
+    # 5) Interactive Vertical Temperature Profile
+    # --------------------------------------------------
     st.subheader("📉 Interactive Vertical Temperature Profile")
 
     if len(depth_cols) < 2:
-        st.error("Not enough depth levels available for a vertical profile.")
+        st.error("Not enough depth levels for a vertical profile.")
     else:
-        df_anim = df.iloc[::7]  # thin data so animation does not lag
+        df_anim = df.iloc[::7]  # reduce size for animation smoothness
 
         depths_sorted = sorted(
             [int(col.split("_")[1].replace("m", "")) for col in depth_cols]
@@ -584,21 +589,24 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
         depth_cols_sorted = [f"temp_{d}m" for d in depths_sorted]
 
         fig = go.Figure()
-
-        # Build animation frames
         frames = []
+
         for i in range(len(df_anim)):
             temp_values = df_anim.iloc[i][depth_cols_sorted].values
             frames.append(
                 go.Frame(
                     data=[
-                        go.Scatter(x=temp_values, y=depths_sorted, mode="lines+markers")
+                        go.Scatter(
+                            x=temp_values,
+                            y=depths_sorted,
+                            mode="lines+markers",
+                        )
                     ],
                     name=str(i),
                 )
             )
 
-        # Initial frame
+        # Initial trace
         fig.add_trace(
             go.Scatter(
                 x=df_anim.iloc[0][depth_cols_sorted].values,
@@ -608,7 +616,7 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
         )
 
         fig.update_layout(
-            title="Vertical Temperature Profile (Interactive Animation)",
+            title="Vertical Temperature Profile (Animated)",
             xaxis_title="Temperature (°C)",
             yaxis_title="Depth (m)",
             yaxis_autorange="reversed",
@@ -648,7 +656,6 @@ If you have run the **RF-MICE Imputation**, this tab will automatically use the 
         )
 
         fig.frames = frames
-
         st.plotly_chart(fig, use_container_width=True)
 
     # ===================================================================
