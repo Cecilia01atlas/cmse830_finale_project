@@ -778,12 +778,15 @@ and winds**. Trend lines (in red) show the dominant linear relationships.
 
     # --- FIXED VERSION THAT WORKS (like your local debug!) ---
     def scatter_pretty(x_var, y_var, sample=4000):
-        # Only keep two columns → avoids Plotly OLS errors
-        df_temp = df_corr[[x_var, y_var]].apply(pd.to_numeric, errors="coerce").dropna()
+        # Build a clean 2-column dataframe ONLY for plotting
+        df_temp = df_corr[[x_var, y_var]].copy()
+        df_temp = df_temp.apply(pd.to_numeric, errors="coerce").dropna()
 
+        # Sample for speed
         if len(df_temp) > sample:
             df_temp = df_temp.sample(sample, random_state=42)
 
+        # Create figure
         fig = px.scatter(
             df_temp,
             x=x_var,
