@@ -313,9 +313,8 @@ elif choice == "Missingness":
         st.pyplot(fig)
 
     # =====================================================
-# Tab 2b: RF-MICE Imputation
-# =====================================================
-elif choice == "Imputation":
+    # Tab 2b: RF-MICE Imputation
+    # =====================================================
     st.title("🤖 Random Forest MICE Imputation")
 
     st.markdown("""
