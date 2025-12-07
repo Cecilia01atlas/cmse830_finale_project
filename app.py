@@ -49,43 +49,161 @@ menu = [
     "Conclusion",
 ]
 
-choice = st.sidebar.radio("Navigate:", menu)
+with st.sidebar:
+    st.title("🌐 ENSO Explorer")
+    st.markdown(
+        """
+Explore the **impact of El Niño & La Niña** on ocean–atmosphere variables  
+through interactive visualizations and imputation tools.
+"""
+    )
+    st.markdown("---")
+    choice = st.radio("Navigate to:", menu)
+
 
 # =====================================================
 # Overview
 # =====================================================
 
+# =========================
+# Tab 1: Overview
+# =========================
 if choice == "Overview":
-    st.title("🌊 Final Project: Ocean–Atmosphere Dynamics Explorer")
+    st.title("🌊 Dataset Overview")
 
     st.markdown("""
-    This dashboard summarizes the relationships between:
-    - **Sea Surface Temperature (SST)**  
-    - **Subsurface temperatures at multiple depths**  
-    - **Winds, humidity, and air temperature**  
-    - **ENSO (El Niño / La Niña)**  
-
-    Your dataset is already fully processed into daily averages from all buoys.
+    Welcome to the **ENSO Explorer App**, an interactive platform that visualizes
+    ocean–atmosphere interactions using long-term TAO mooring data.
+    
+    This dataset includes measurements of:
+    - 🌡️ Sea Surface Temperature (SST)
+    - 🌡️ Air Temperature
+    - 💨 Zonal & Meridional Winds
+    - 💧 Relative Humidity
+    - 📉 Subsurface Temperatures at multiple depths
+    - 🌍 ENSO Niño 3.4 Index (ANOM)
+    
+    The goal of this app is to help investigate ocean–atmosphere coupling
+    and ENSO dynamics over several decades.
     """)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Total Records", len(df))
-    col2.metric("Total Features", df.shape[1])
-    col3.metric("Missing Cells", df.isna().sum().sum())
+    # -------------------------
+    # Key metrics
+    # -------------------------
+    total_rows = len(df)
+    total_cols = len(df.columns)
+    total_missing = df.isna().sum().sum()
 
-    st.subheader("📋 Column Summary")
-    st.dataframe(
-        pd.DataFrame(
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Records", total_rows)
+    col2.metric("Total Features", total_cols)
+    col3.metric("Missing Values", total_missing)
+
+    # -------------------------
+    # Column information
+    # --------------------------
+
+    with st.expander("📋 Column Information"):
+        descriptions = {
+            "date": "Date of observation",
+            "year": "Year extracted from date",
+            "month": "Month extracted from date",
+            "T_25": "Sea Surface Temperature (°C)",
+            "AT_21": "Air Temperature (°C)",
+            "RH_910": "Relative Humidity (%)",
+            "WU_422": "Zonal Wind (m/s, west-east)",
+            "WV_423": "Meridional Wind (m/s, south-north)",
+            "ANOM": "ENSO Niño 3.4 Index",
+            # Depth temperatures (automatically handled below)
+        }
+
+        # Automatically describe depth variables
+        for col in df.columns:
+            if col.startswith("temp_"):
+                depth = col.replace("temp_", "").replace("m", "")
+                descriptions[col] = f"Temperature at {depth} m depth (°C)"
+
+        col_info = pd.DataFrame(
             {
                 "Column": df.columns,
-                "Type": df.dtypes.astype(str),
-                "Missing": df.isna().sum(),
+                "Type": df.dtypes.values,
+                "Missing Values": df.isna().sum().values,
+                "Description": [descriptions.get(col, "") for col in df.columns],
             }
         )
-    )
 
-    st.subheader("📈 Summary Statistics")
-    st.write(df.describe())
+        st.dataframe(col_info.astype(str))
+
+    # -------------------------
+    # Summary statistics
+    # -------------------------
+    with st.expander("📈 Summary Statistics"):
+        numeric_df = df.select_dtypes(include=["float64", "int64"])
+        st.write(numeric_df.describe())
+
+    # -------------------------
+    # Temporal coverage plot
+    # -------------------------
+    with st.expander("🕒 Temporal Coverage"):
+        st.markdown("""
+        This graph shows the **number of recorded measurements per month**.
+        It helps identify gaps in observation coverage and denser periods.
+        """)
+
+        df["year_month"] = (
+            df["year"].astype(str) + "-" + df["month"].astype(str).str.zfill(2)
+        )
+        ym_counts = df["year_month"].value_counts().sort_index()
+
+        fig, ax = plt.subplots(figsize=(14, 4))
+        ym_counts.plot(ax=ax)
+
+        ax.set_title("Temporal Coverage of Observations")
+        ax.set_xlabel("Year-Month")
+        ax.set_ylabel("Number of Measurements")
+        ax.tick_params(axis="x", rotation=90)
+
+        st.pyplot(fig)
+
+    # -------------------------
+    # Duplicate detection
+    # -------------------------
+    with st.expander("🔁 Duplicate Records"):
+        duplicate_count = df.duplicated().sum()
+
+        if duplicate_count > 0:
+            st.warning(f"⚠️ {duplicate_count} duplicate rows found.")
+            st.dataframe(df[df.duplicated()].head())
+        else:
+            st.success("✅ No duplicate rows found.")
+
+    # -------------------------
+    # Outlier detection
+    # -------------------------
+    with st.expander("🚨 Outlier Detection (|Z-score| > 3)"):
+        st.markdown("""
+        Outliers may represent measurement anomalies or extreme
+        environmental events (especially during ENSO conditions).
+        """)
+
+        # Columns we want to check
+        numeric_cols = ["T_25", "AT_21", "RH_910", "WU_422", "WV_423", "ANOM"] + [
+            col for col in df.columns if col.startswith("temp_")
+        ]
+
+        outlier_results = {}
+
+        for col in numeric_cols:
+            if col in df.columns:
+                z = (df[col] - df[col].mean()) / df[col].std()
+                outlier_results[col] = (z.abs() > 3).sum()
+
+        st.write(
+            pd.DataFrame.from_dict(
+                outlier_results, orient="index", columns=["Outliers"]
+            )
+        )
+
 
 # =====================================================
 # Missingness
