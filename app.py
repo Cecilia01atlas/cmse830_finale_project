@@ -231,11 +231,11 @@ elif choice == "Missingness":
         # ---- Detect variables with too many missing values ----
         missing_pct = df.isna().mean()
 
-        too_missing = missing_pct[missing_pct > 0.70]  # >70% missing
+        too_missing = missing_pct[missing_pct > 0.30]  # >30% missing
 
         if len(too_missing) > 0:
             st.warning(
-                "⚠️ **Variables with >70% missing values** — recommended to exclude:\n\n"
+                "⚠️ **Variables with > 30% missing values** — recommended to exclude:\n\n"
                 + "\n".join(
                     [
                         f"- **{col}** ({pct:.1%} missing)"
@@ -312,6 +312,111 @@ elif choice == "Missingness":
 
         st.pyplot(fig)
 
+    # -----------------------------
+    # RF-MICE IMPUTATION
+    # -----------------------------
+    st.subheader("🤖 Random Forest MICE Imputation")
+
+    st.markdown("""
+    This imputation method uses **Iterative Imputation** with **Random Forest regressors**,  
+    allowing each variable to be predicted from all others.  
+    This method handles nonlinear relationships and works well for environmental datasets.
+    """)
+
+    if st.button("Run Imputation"):
+        # from sklearn.experimental import enable_iterative_imputer
+        from sklearn.impute import IterativeImputer
+        from sklearn.ensemble import RandomForestRegressor
+
+        # Variables to impute
+        columns_to_impute = [
+            "WU_422",
+            "WV_423",
+            "RH_910",
+            "AT_21",
+            "temp_1m",
+            "temp_10m",
+            "temp_20m",
+            "temp_50m",
+            "temp_75m",
+            "temp_100m",
+            "temp_150m",
+            "temp_175m",
+            "temp_200m",
+            "temp_250m",
+            "T_25",
+        ]
+
+        missing_mask = df[columns_to_impute].isna()
+
+        # Remove non-numeric columns
+        non_numeric_cols = df.select_dtypes(exclude=["float", "int"]).columns
+        numeric_df = df.drop(columns=non_numeric_cols)
+
+        rf = RandomForestRegressor(
+            n_estimators=50, max_depth=10, random_state=42, n_jobs=-1
+        )
+
+        imputer = IterativeImputer(estimator=rf, max_iter=5, random_state=42)
+
+        df_imputed = pd.DataFrame(
+            imputer.fit_transform(numeric_df), columns=numeric_df.columns
+        )
+
+        # Re-add date/year/month columns
+        for col in non_numeric_cols:
+            df_imputed[col] = df[col]
+
+        # Store imputed version
+        st.session_state["df"] = df_imputed.copy()
+
+        st.success("Imputation completed successfully!")
+
+        # -----------------------------
+        # Plot Original vs Imputed
+        # -----------------------------
+        st.subheader("📊 Original vs Imputed Values")
+
+        pretty_names = {
+            "WU_422": "Zonal Wind (m/s)",
+            "WV_423": "Meridional Wind (m/s)",
+            "RH_910": "Relative Humidity (%)",
+            "AT_21": "Air Temperature (°C)",
+            "T_25": "Sea Surface Temperature (°C)",
+            "temp_1m": "Temperature at 1m (°C)",
+            "temp_10m": "Temperature at 10m (°C)",
+            "temp_20m": "Temperature at 20m (°C)",
+            "temp_50m": "Temperature at 50m (°C)",
+            "temp_75m": "Temperature at 75m (°C)",
+            "temp_100m": "Temperature at 100m (°C)",
+            "temp_150m": "Temperature at 150m (°C)",
+            "temp_175m": "Temperature at 175m (°C)",
+            "temp_200m": "Temperature at 200m (°C)",
+            "temp_250m": "Temperature at 250m (°C)",
+        }
+
+        for col in columns_to_impute:
+            fig, ax = plt.subplots(figsize=(14, 4))
+
+            ax.plot(df["date"], df[col], alpha=0.4, label="Original")
+            ax.scatter(
+                df.loc[missing_mask[col], "date"],
+                df_imputed.loc[missing_mask[col], col],
+                s=10,
+                color="orange",
+                label="Imputed",
+            )
+
+            ax.set_title(f"{pretty_names.get(col, col)} — Original vs Imputed")
+            ax.set_xlabel("Date")
+            ax.set_ylabel(pretty_names.get(col, col))
+            ax.legend()
+            ax.grid(alpha=0.3)
+
+            st.pyplot(fig)
+
+        st.write("Missing AFTER imputation:")
+        st.write(df_imputed[columns_to_impute].isna().sum())
 
 # =====================================================
 # Temporal Coverage
