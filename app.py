@@ -461,6 +461,262 @@ elif choice == "Missingness":
 
 
 # =====================================================
+# Tab 3: Temporal Coverage
+# =====================================================
+elif choice == "Temporal Coverage":
+    st.header("📆 Temporal Coverage & ENSO Influence")
+
+    df = st.session_state["df"].copy()
+
+    # Ensure datetime
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+    st.markdown("""
+This tab explores **how climate variables evolve over time**, especially in relation to  
+**ENSO events (El Niño & La Niña)**.
+
+- 🔴 **El Niño** → positive ENSO index, warming of SST  
+- 🔵 **La Niña** → negative ENSO index, cooling of SST  
+- ⚪ Neutral → weak anomalies  
+
+Select a variable below to view how it behaves over time.
+    """)
+
+    # Available climate variables
+    numeric_cols = ["T_25", "AT_21", "RH_910", "WU_422", "WV_423"]
+    feature = st.selectbox(
+        "Select variable to visualize:",
+        numeric_cols,
+        index=numeric_cols.index("T_25"),
+    )
+
+    # =============================
+    # 1. ENSO-colored scatter plot
+    # =============================
+    st.subheader(f"📅 {feature} Over Time (ENSO-Colored Scatter)")
+
+    df_plot = df.dropna(subset=[feature, "ANOM", "date"])
+    anom_abs = max(abs(df_plot["ANOM"].min()), abs(df_plot["ANOM"].max()))
+
+    fig_scatter = px.scatter(
+        df_plot,
+        x="date",
+        y=feature,
+        color="ANOM",
+        color_continuous_scale="RdBu_r",
+        opacity=0.5,
+        title=f"{feature} Over Time (Colored by ENSO Index)",
+    )
+
+    fig_scatter.update_layout(
+        coloraxis=dict(
+            cmin=-anom_abs,
+            cmax=anom_abs,
+            cmid=0,
+            colorscale="RdBu_r",
+            colorbar=dict(title="ENSO Index"),
+        ),
+        template="plotly_white",
+        title_x=0.5,
+    )
+
+    st.plotly_chart(fig_scatter, use_container_width=True)
+
+    # =============================
+    # 2. ENSO-shaded line plot
+    # =============================
+    st.subheader(f"📈 Smoothed {feature} with ENSO Shading")
+
+    show_shading = st.checkbox("Show ENSO shading", value=True)
+
+    df_daily = df.groupby("date")[numeric_cols + ["ANOM"]].mean().reset_index()
+
+    el_thresh, la_thresh = 1.0, -1.0
+    df_daily["event"] = np.where(
+        df_daily["ANOM"] > el_thresh,
+        "El Niño",
+        np.where(df_daily["ANOM"] < la_thresh, "La Niña", None),
+    )
+
+    # Build shading periods
+    shading_periods = []
+    current_event, start_date = None, None
+
+    for _, row in df_daily.iterrows():
+        event, date = row["event"], row["date"]
+
+        if event != current_event:
+            if current_event is not None:
+                shading_periods.append(
+                    {"event": current_event, "start": start_date, "end": date}
+                )
+            current_event, start_date = event, date
+
+    if current_event is not None:
+        shading_periods.append(
+            {
+                "event": current_event,
+                "start": start_date,
+                "end": df_daily["date"].iloc[-1],
+            }
+        )
+
+    fig_line = go.Figure()
+
+    if show_shading:
+        for period in shading_periods:
+            if period["event"] is None:
+                continue
+            color = (
+                "rgba(255, 0, 0, 0.15)"
+                if period["event"] == "El Niño"
+                else "rgba(0, 0, 255, 0.15)"
+            )
+            fig_line.add_vrect(
+                x0=period["start"],
+                x1=period["end"],
+                fillcolor=color,
+                opacity=0.3,
+                layer="below",
+                line_width=0,
+            )
+
+    fig_line.add_trace(
+        go.Scatter(
+            x=df_daily["date"],
+            y=df_daily[feature],
+            mode="lines",
+            line=dict(color="royalblue", width=1.4),
+            name=feature,
+        )
+    )
+
+    fig_line.update_layout(
+        title=f"{feature} with ENSO Shading",
+        template="plotly_white",
+        title_x=0.5,
+    )
+
+    st.plotly_chart(fig_line, use_container_width=True)
+
+    # ===================================================================
+    # 3. TEMPERATURE AT MULTIPLE DEPTHS OVER TIME
+    # ===================================================================
+    st.subheader("🌡 Sea Temperature Over Time at Multiple Depths")
+
+    # Keep only relevant depth columns
+    depth_cols = [c for c in df.columns if c.startswith("temp_")]
+
+    # Remove the high-missing ones
+    depth_cols = [c for c in depth_cols if c not in ["temp_15m", "temp_175m"]]
+
+    # Convert names → numeric depth
+    depths = [int(col.split("_")[1].replace("m", "")) for col in depth_cols]
+    colors = px.colors.sequential.Viridis[: len(depth_cols)]
+
+    fig_depth = go.Figure()
+
+    for i, (col, depth) in enumerate(zip(depth_cols, depths)):
+        fig_depth.add_trace(
+            go.Scatter(
+                x=df["date"],
+                y=df[col],
+                mode="lines",
+                name=f"{depth} m",
+                line=dict(color=colors[i], width=1.7),
+            )
+        )
+
+    fig_depth.update_layout(
+        title="Sea Temperature Over Time at Multiple Depths",
+        xaxis_title="Date",
+        yaxis_title="Temperature (°C)",
+        template="plotly_white",
+        legend_title="Depth",
+        height=500,
+    )
+
+    st.plotly_chart(fig_depth, use_container_width=True)
+
+    # ===================================================================
+    # 4. INTERACTIVE VERTICAL TEMPERATURE PROFILE
+    # ===================================================================
+    st.subheader("📉 Interactive Vertical Temperature Profile")
+
+    df_profile = df.iloc[::7]  # every 7th day for speed
+    depth_cols = [
+        c
+        for c in df.columns
+        if c.startswith("temp_") and c not in ["temp_15m", "temp_175m"]
+    ]
+    depths = [int(col.split("_")[1].replace("m", "")) for col in depth_cols]
+
+    fig_prof = go.Figure()
+
+    # frames for animation
+    frames = []
+    for i in range(len(df_profile)):
+        frame_vals = df_profile.iloc[i][depth_cols].values
+        frames.append(
+            go.Frame(
+                data=[
+                    go.Scatter(
+                        x=frame_vals,
+                        y=depths,
+                        mode="lines+markers",
+                    )
+                ],
+                name=str(i),
+            )
+        )
+
+    # initial trace
+    fig_prof.add_trace(
+        go.Scatter(
+            x=df_profile.iloc[0][depth_cols].values, y=depths, mode="lines+markers"
+        )
+    )
+
+    fig_prof.update_layout(
+        title="Vertical Temperature Profile (Animation)",
+        xaxis_title="Temperature (°C)",
+        yaxis_title="Depth (m)",
+        yaxis_autorange="reversed",
+        template="plotly_white",
+        height=600,
+        updatemenus=[
+            {
+                "type": "buttons",
+                "showactive": False,
+                "buttons": [
+                    {
+                        "label": "Play",
+                        "method": "animate",
+                        "args": [None, {"frame": {"duration": 40, "redraw": False}}],
+                    }
+                ],
+            }
+        ],
+        sliders=[
+            {
+                "steps": [
+                    {
+                        "label": str(df_profile["date"].iloc[i].date()),
+                        "method": "animate",
+                        "args": [[str(i)], {"frame": {"duration": 0, "redraw": False}}],
+                    }
+                    for i in range(len(df_profile))
+                ]
+            }
+        ],
+    )
+
+    fig_prof.frames = frames
+
+    st.plotly_chart(fig_prof, use_container_width=True)
+
+
+# =====================================================
 # Correlation Study
 # =====================================================
 
