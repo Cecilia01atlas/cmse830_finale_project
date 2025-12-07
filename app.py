@@ -777,7 +777,8 @@ Trend lines (in red) summarize the dominant linear relationship.
 """)
 
     def scatter_pretty(x_var, y_var, sample=3000):
-        df_temp = df_corr.copy()
+        df_temp = df_corr[[x_var, y_var]].dropna()  # <-- FIX
+
         if len(df_temp) > sample:
             df_temp = df_temp.sample(sample, random_state=42)
 
