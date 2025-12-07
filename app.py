@@ -236,53 +236,50 @@ elif choice == "Missingness":
     # Missingness Heatmap
     # -----------------------------
     with st.expander("🌡 Missingness Heatmap"):
+        st.markdown("""
+        The heatmap below shows missing values (yellow = missing),
+        aligned over time. Each row corresponds to a feature.
+        """)
 
-    st.markdown("""
-    The heatmap below shows missing values (yellow = missing),
-    aligned over time. Each row corresponds to a feature.
-    """)
+        cols_for_heatmap = [col for col in df.columns if col not in ["year", "month"]]
 
-    cols_for_heatmap = [
-        col for col in df.columns 
-        if col not in ["year", "month"]
-    ]
+        nan_array = (
+            df[cols_for_heatmap].isna().astype(int).to_numpy().T
+        )  # transpose here
 
-    nan_array = df[cols_for_heatmap].isna().astype(int).to_numpy().T  # transpose here
+        # HIGH DPI + SHARP EDGES
+        fig, ax = plt.subplots(figsize=(30, 15), dpi=150)
 
-    # HIGH DPI + SHARP EDGES
-    fig, ax = plt.subplots(figsize=(30, 15), dpi=150)
+        # pcolormesh gives cleaner boundaries for big grids
+        mesh = ax.pcolormesh(
+            nan_array,
+            cmap="cividis",
+            shading="nearest",  # <-- SHARP
+        )
 
-    # pcolormesh gives cleaner boundaries for big grids
-    mesh = ax.pcolormesh(
-        nan_array,
-        cmap="cividis",
-        shading="nearest"  # <-- SHARP
-    )
+        ax.set_title("Missing Values Heatmap (1 = Missing)", fontsize=24, pad=20)
+        ax.set_xlabel("Time Index", fontsize=20)
+        ax.set_ylabel("Features", fontsize=20)
 
-    ax.set_title("Missing Values Heatmap (1 = Missing)", fontsize=24, pad=20)
-    ax.set_xlabel("Time Index", fontsize=20)
-    ax.set_ylabel("Features", fontsize=20)
+        # Y-axis labels (features)
+        ax.set_yticks(np.arange(len(cols_for_heatmap)) + 0.5)
+        ax.set_yticklabels(cols_for_heatmap, fontsize=12)
 
-    # Y-axis labels (features)
-    ax.set_yticks(np.arange(len(cols_for_heatmap)) + 0.5)
-    ax.set_yticklabels(cols_for_heatmap, fontsize=12)
+        # X-axis ticks (time)
+        n_rows = nan_array.shape[1]
+        n_ticks = 10  # fewer, clearer ticks
+        tick_positions = np.linspace(0, n_rows - 1, n_ticks).astype(int)
+        tick_labels = df.loc[tick_positions, "date"].dt.strftime("%Y-%m-%d")
 
-    # X-axis ticks (time)
-    n_rows = nan_array.shape[1]
-    n_ticks = 10  # fewer, clearer ticks
-    tick_positions = np.linspace(0, n_rows-1, n_ticks).astype(int)
-    tick_labels = df.loc[tick_positions, "date"].dt.strftime("%Y-%m-%d")
+        ax.set_xticks(tick_positions + 0.5)
+        ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=12)
 
-    ax.set_xticks(tick_positions + 0.5)
-    ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=12)
+        # Add colorbar
+        cbar = fig.colorbar(mesh, ax=ax)
+        cbar.set_label("Missingness", fontsize=18)
+        cbar.ax.tick_params(labelsize=12)
 
-    # Add colorbar
-    cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label("Missingness", fontsize=18)
-    cbar.ax.tick_params(labelsize=12)
-
-    st.pyplot(fig)
-
+        st.pyplot(fig)
 
     # -----------------------------
     # RF-MICE IMPUTATION
