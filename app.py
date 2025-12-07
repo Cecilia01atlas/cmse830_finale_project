@@ -660,35 +660,294 @@ If you run the **RF-MICE Imputation**, this tab will automatically switch to the
 
 
 # =====================================================
-# Correlation Study
+# Tab 4: Correlation Study
 # =====================================================
-
 elif choice == "Correlation Study":
-    st.header("📊 Correlation Between Variables")
+    st.header("📊 Correlation & Feature Relationships")
+    st.markdown("""
+Understanding how **oceanic and atmospheric variables interact** is key to explaining  
+ENSO-related variability and heat exchange in the tropical Pacific.
 
-    selected = [
+This tab provides:
+
+- 🔸 A **correlation heatmap**  
+- 🔸 Clean **scatterplots with regression lines**  
+- 🔸 A **scatter-matrix** (pairwise relationships)  
+- 🔸 ENSO-colored scatter panels *(new — very insightful!)*  
+- 🔸 A **binned SST vs Air Temperature** seasonal profile  
+""")
+
+    # --------------------------------------------------
+    # 1) Select dataset (imputed if available)
+    # --------------------------------------------------
+    if "df" in st.session_state:
+        df_corr = st.session_state["df"].copy()
+        st.info("Using imputed dataset ✔")
+    else:
+        df_corr = df.copy()
+        st.warning("Using original dataset (run imputation for cleaner correlations).")
+
+    # --------------------------------------------------
+    # Pretty variable names
+    # --------------------------------------------------
+    pretty_names = {
+        "WU_422": "Zonal Wind (m/s)",
+        "WV_423": "Meridional Wind (m/s)",
+        "RH_910": "Relative Humidity (%)",
+        "AT_21": "Air Temperature (°C)",
+        "temp_10m": "Temp @10m (°C)",
+        "temp_50m": "Temp @50m (°C)",
+        "temp_100m": "Temp @100m (°C)",
+        "temp_150m": "Temp @150m (°C)",
+        "temp_175m": "Temp @175m (°C)",
+        "temp_200m": "Temp @200m (°C)",
+        "temp_250m": "Temp @250m (°C)",
+        "T_25": "Sea Surface Temp (SST, °C)",
+    }
+
+    selected_features = list(pretty_names.keys())
+
+    df_corr_numeric = df_corr[selected_features].apply(pd.to_numeric, errors="coerce")
+    df_corr_numeric = df_corr_numeric.dropna()
+
+    # =====================================================
+    # 🔸 Correlation Heatmap
+    # =====================================================
+    st.subheader("🔸 Correlation Heatmap")
+
+    corr = df_corr_numeric.corr()
+    corr.index = [pretty_names[c] for c in corr.index]
+    corr.columns = [pretty_names[c] for c in corr.columns]
+
+    mask = np.zeros_like(corr, dtype=bool)
+    for i in range(corr.shape[0]):
+        for j in range(corr.shape[1]):
+            if j > i:
+                mask[i, j] = True
+
+    corr_masked = corr.mask(mask)
+
+    fig_corr = go.Figure(
+        data=go.Heatmap(
+            z=corr_masked.values,
+            x=corr_masked.columns,
+            y=corr_masked.index,
+            colorscale="RdBu_r",
+            zmin=-1,
+            zmax=1,
+            hoverongaps=False,
+            colorbar=dict(title="Correlation"),
+        )
+    )
+
+    # numeric annotations
+    for i in range(corr.shape[0]):
+        for j in range(corr.shape[1]):
+            if not mask[i, j]:
+                fig_corr.add_annotation(
+                    x=corr.columns[j],
+                    y=corr.index[i],
+                    text=f"{corr.values[i, j]:.2f}",
+                    showarrow=False,
+                    font=dict(size=10),
+                )
+
+    fig_corr.update_layout(
+        title="Correlation Heatmap (Lower Triangle)",
+        title_x=0.5,
+        width=900,
+        height=900,
+        plot_bgcolor="white",
+    )
+
+    st.plotly_chart(fig_corr, use_container_width=True)
+
+    # =====================================================
+    # 🔸 Scatterplots with Trendline
+    # =====================================================
+    st.subheader("🔸 Key Scatterplots with Regression Lines")
+
+    def scatter_pretty(x_var, y_var, sample=3000):
+        df_temp = df_corr.copy()
+        if len(df_temp) > sample:
+            df_temp = df_temp.sample(sample, random_state=42)
+
+        fig = px.scatter(
+            df_temp,
+            x=x_var,
+            y=y_var,
+            opacity=0.6,
+            trendline="ols",
+            trendline_color_override="darkred",
+            labels={
+                x_var: pretty_names.get(x_var, x_var),
+                y_var: pretty_names.get(y_var, y_var),
+            },
+            title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
+        )
+
+        fig.update_traces(
+            marker=dict(
+                size=6,
+                color="rgba(30, 100, 160, 0.55)",
+                line=dict(width=0.5, color="darkblue"),
+            )
+        )
+        fig.update_layout(
+            plot_bgcolor="white",
+            title_x=0.5,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    scatter_pretty("AT_21", "T_25")
+    scatter_pretty("RH_910", "T_25")
+    scatter_pretty("WU_422", "T_25")
+    scatter_pretty("WV_423", "T_25")
+
+    # =====================================================
+    # NEW: ENSO-colored scatter panels
+    # =====================================================
+    st.subheader("🔸 ENSO-Colored Scatter Panels (NEW)")
+
+    if "ANOM" in df_corr.columns and not df_corr["ANOM"].isna().all():
+        vars_to_compare = ["AT_21", "RH_910", "WU_422", "WV_423"]
+
+        fig = px.scatter(
+            df_corr,
+            x="T_25",
+            y="AT_21",
+            color="ANOM",
+            color_continuous_scale="RdBu_r",
+            opacity=0.6,
+            facet_col="RH_910",
+        )
+        # Instead of facetting poorly, we make 4 separate subplots:
+
+        fig = make_subplots(
+            rows=2,
+            cols=2,
+            subplot_titles=[
+                "Air Temp vs SST",
+                "Humidity vs SST",
+                "Zonal Wind vs SST",
+                "Meridional Wind vs SST",
+            ],
+        )
+
+        variables = ["AT_21", "RH_910", "WU_422", "WV_423"]
+
+        for idx, var in enumerate(variables):
+            r = idx // 2 + 1
+            c = idx % 2 + 1
+
+            fig.add_trace(
+                go.Scatter(
+                    x=df_corr["T_25"],
+                    y=df_corr[var],
+                    mode="markers",
+                    marker=dict(
+                        size=3,
+                        color=df_corr["ANOM"],
+                        colorscale="RdBu",
+                        showscale=(idx == 0),
+                        colorbar=dict(title="ENSO Index") if idx == 0 else None,
+                    ),
+                    name=pretty_names[var],
+                ),
+                row=r,
+                col=c,
+            )
+
+        fig.update_layout(
+            height=700,
+            title="ENSO-Colored Scatter Panels",
+            title_x=0.5,
+            template="plotly_white",
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.warning("No ENSO index available. Skipping ENSO-colored plots.")
+
+    # =====================================================
+    # Scatter Matrix
+    # =====================================================
+    st.subheader("🔸 Pairwise Scatter Matrix")
+
+    scatter_features = [
         "T_25",
+        "temp_50m",
+        "temp_150m",
         "AT_21",
         "RH_910",
         "WU_422",
         "WV_423",
-        "temp_10m",
-        "temp_50m",
-        "temp_100m",
-        "temp_150m",
     ]
-    subset = df[selected].dropna()
-    corr = subset.corr()
 
-    st.subheader("🔸 Correlation Heatmap")
-    fig = px.imshow(corr, text_auto=True, color_continuous_scale="RdBu_r")
-    st.plotly_chart(fig, use_container_width=True)
+    df_scatter = df_corr[scatter_features].dropna().rename(columns=pretty_names)
 
-    st.subheader("🔸 Scatter Matrix")
-    scatter_df = subset.sample(min(len(subset), 1500))
-    fig2 = px.scatter_matrix(scatter_df, dimensions=scatter_df.columns)
-    fig2.update_traces(diagonal_visible=False)
-    st.plotly_chart(fig2, use_container_width=True)
+    fig_matrix = px.scatter_matrix(
+        df_scatter,
+        dimensions=list(df_scatter.columns),
+        color="Air Temperature (°C)",
+        opacity=0.45,
+        title="Pairwise Relationships Between Ocean & Atmosphere Variables",
+    )
+    fig_matrix.update_layout(
+        height=1100,
+        title_x=0.5,
+        plot_bgcolor="white",
+    )
+
+    st.plotly_chart(fig_matrix, use_container_width=True)
+
+    # =====================================================
+    # SST vs Air Temperature Bins
+    # =====================================================
+    st.subheader("🔸 Binned SST by Air Temperature")
+
+    df_corr["air_temp_bin"] = pd.cut(df_corr["AT_21"], bins=20)
+
+    avg_sst = (
+        df_corr.groupby(["air_temp_bin", "month"])["T_25"]
+        .mean()
+        .reset_index(name="avg_ss_temp")
+    )
+
+    month_labels = {
+        1: "Jan",
+        2: "Feb",
+        3: "Mar",
+        4: "Apr",
+        5: "May",
+        6: "Jun",
+        7: "Jul",
+        8: "Aug",
+        9: "Sep",
+        10: "Oct",
+        11: "Nov",
+        12: "Dec",
+    }
+    avg_sst["month_name"] = avg_sst["month"].map(month_labels)
+    avg_sst["air_temp_bin_str"] = avg_sst["air_temp_bin"].astype(str)
+
+    fig_binned = px.line(
+        avg_sst,
+        x="air_temp_bin_str",
+        y="avg_ss_temp",
+        color="month_name",
+        markers=True,
+        title="Average SST by Air Temperature Bin (Seasonal Pattern)",
+        labels={
+            "air_temp_bin_str": "Air Temperature Bin",
+            "avg_ss_temp": "Mean SST (°C)",
+            "month_name": "Month",
+        },
+    )
+
+    fig_binned.update_layout(xaxis_tickangle=-45, title_x=0.5)
+    st.plotly_chart(fig_binned, use_container_width=True)
+
 
 # =====================================================
 # Temperature Profiles
