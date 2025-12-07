@@ -767,23 +767,20 @@ This tab provides:
 
     st.plotly_chart(fig_corr, use_container_width=True)
 
-    # =====================================================
+    ## =====================================================
     # 🔸 Scatterplots with Regression Lines
     # =====================================================
     st.subheader("🔸 Key Scatterplots with Regression Lines")
     st.markdown("""
-These scatterplots highlight how **SST relates to air temperature, humidity, and winds**.  
-Trend lines (in red) summarize the dominant linear relationship.
+These scatterplots highlight how **SST relates to air temperature, humidity,  
+and winds**. Trend lines (in red) show the dominant linear relationships.
 """)
 
-    def scatter_pretty(x_var, y_var, sample=3000):
-        # Use numeric-cleaned dataframe
-        df_temp = df_corr_numeric[[x_var, y_var]].copy()
+    # --- FIXED VERSION THAT WORKS (like your local debug!) ---
+    def scatter_pretty(x_var, y_var, sample=4000):
+        # Only keep two columns → avoids Plotly OLS errors
+        df_temp = df_corr[[x_var, y_var]].apply(pd.to_numeric, errors="coerce").dropna()
 
-        # Drop any remaining NaNs
-        df_temp = df_temp.dropna()
-
-        # Sample for performance
         if len(df_temp) > sample:
             df_temp = df_temp.sample(sample, random_state=42)
 
@@ -791,9 +788,9 @@ Trend lines (in red) summarize the dominant linear relationship.
             df_temp,
             x=x_var,
             y=y_var,
-            opacity=0.6,
             trendline="ols",
             trendline_color_override="darkred",
+            opacity=0.6,
             labels={
                 x_var: pretty_names.get(x_var, x_var),
                 y_var: pretty_names.get(y_var, y_var),
@@ -804,18 +801,16 @@ Trend lines (in red) summarize the dominant linear relationship.
         fig.update_traces(
             marker=dict(
                 size=6,
-                color="rgba(30, 100, 160, 0.55)",
+                color="rgba(30,100,160,0.55)",
                 line=dict(width=0.5, color="darkblue"),
             )
         )
 
-        fig.update_layout(
-            plot_bgcolor="white",
-            title_x=0.5,
-        )
+        fig.update_layout(plot_bgcolor="white", title_x=0.5)
 
         st.plotly_chart(fig, use_container_width=True)
 
+    # ----- PLOTS -----
     scatter_pretty("AT_21", "T_25")
     scatter_pretty("RH_910", "T_25")
     scatter_pretty("WU_422", "T_25")
