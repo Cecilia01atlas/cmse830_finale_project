@@ -1274,7 +1274,6 @@ This tab compares two forecasting approaches:
 
 ### **1️⃣ AutoRegressive (AR) Model**
 Uses past SST values to predict future SST.  
-We run AR(200) lazily to avoid freezing the app.
 
 ### **2️⃣ Random Forest Regression**
 Uses engineered features (lags, rolling anomalies, wind structure, seasonality).
@@ -1500,5 +1499,5 @@ elif choice == "Conclusion":
     - ENSO (El Niño/La Niña) patterns clearly influence SST anomalies.  
     - Subsurface temperature profiles reveal long-term shifts and stratification.  
 
-    This dashboard allows interactive exploration of these relationships.
+    **Final note**: AI was used, specifically ChatGPT-5, to improve all the visualizations and implement everything into the app with Streamlit.
     """)
