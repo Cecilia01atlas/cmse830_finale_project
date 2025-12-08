@@ -1450,6 +1450,48 @@ Both models:
         **R²:**  {rf_res["r2"]:.3f}
         """)
 
+    st.markdown("""
+    ### Interpretation of Model Performance
+
+    **Autoregressive (AR) Model**
+
+    RMSE: 0.813  
+    MAE: 0.677  
+    R²: -0.038  
+
+    A negative R² means the AR model performs worse than a simple baseline that
+    predicts the mean SST. The reason is that an AR model only uses past SST values
+    to make predictions. However, real ocean temperatures are strongly influenced
+    by other physical drivers such as winds, air temperature, humidity, vertical
+    mixing, and ENSO-related changes. Because the AR model has no access to these
+    drivers, it cannot capture seasonal patterns or ENSO events. SST is therefore
+    not well-approximated as a purely autoregressive process, which leads to weak
+    performance.
+
+    **Random Forest Model**
+
+    RMSE: 0.105  
+    MAE: 0.047  
+    R²: 0.983  
+
+    The Random Forest model performs much better because it uses many engineered
+    features that describe important physical processes. These include lagged SST
+    anomalies, rolling averages, SST differences, seasonal encodings, and wind
+    anomaly magnitude. By incorporating these predictors, the model gains access to
+    the atmospheric and oceanic conditions that drive SST behavior. As a result, it
+    can capture seasonal cycles, ENSO-driven warming and cooling, and changes in
+    vertical heat distribution. This allows it to explain nearly all SST
+    variability, producing a very high R² score.
+
+    **Summary**
+
+    The AR model only uses SST history and therefore misses essential physical
+    drivers, resulting in poor predictive skill.  
+    The Random Forest model incorporates a rich set of engineered features, allowing
+    it to capture the true complexity of the ocean–atmosphere system and achieve
+    strong predictive performance.
+    """)
+
 
 # =====================================================
 # Conclusion
