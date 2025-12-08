@@ -1333,7 +1333,7 @@ This effectively means:
     from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
     # Fit model
-    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
+    ar_model = AutoReg(sst_train, lags=200, old_names=False).fit()
 
     # Predict on test range
     start = len(sst_train)
