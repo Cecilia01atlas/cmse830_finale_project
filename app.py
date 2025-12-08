@@ -1033,13 +1033,6 @@ Color indicates **air temperature**, helping reveal thermodynamic structure.
 
         st.plotly_chart(fig_matrix, use_container_width=True)
 
-        st.markdown("""
-### 🔍 Interpretation
-- Ocean temperatures cluster tightly and show coherent seasonal structure.  
-- Atmospheric variables (humidity, winds) display greater spread.  
-- The matrix cleanly separates **thermodynamic variables** from **dynamic variables**.  
-""")
-
     else:
         st.warning("Not enough complete data to display the scatter matrix.")
 
