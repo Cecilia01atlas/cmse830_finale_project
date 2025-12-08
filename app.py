@@ -1321,7 +1321,7 @@ elif choice == "Forecast Models":
     """)
 
     # Fit AR model
-    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
+    ar_model = AutoReg(sst_train, lags=1000, old_names=False).fit()
 
     # Predict test period only
     start = len(sst_train)
