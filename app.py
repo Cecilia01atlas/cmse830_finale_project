@@ -1015,8 +1015,11 @@ Color indicates **air temperature**, helping reveal thermodynamic structure.
         fig_matrix = px.scatter_matrix(
             df_scatter,
             dimensions=list(df_scatter.columns),
-            color_continuous_scale="RdBu_r",
+            color="Air Temperature (°C)"
+            if "Air Temperature (°C)" in df_scatter.columns
+            else None,
             opacity=0.45,
+            color_continuous_scale="RdBu_r",
             title="Pairwise Relationships Between Ocean & Atmosphere Variables",
         )
 
