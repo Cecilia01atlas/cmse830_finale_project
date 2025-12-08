@@ -1265,7 +1265,23 @@ Features represent ENSO memory, momentum, seasonality, and wind forcing.
 # Tab 6: Forecast Models
 # =====================================================
 elif choice == "Forecast Models":
-    st.header("📈 Forecasting Models for SST")
+    st.header("📈 Forecasting Models for Sea Surface Temperature (SST)")
+
+    st.markdown("""
+    This tab presents two forecasting approaches applied to the **daily Sea Surface Temperature (SST)** record:
+
+    ### **1️⃣ Autoregressive Model (AR)**
+    A classical time-series model that predicts SST based solely on **its own past values**.  
+    Using **5000 lags**, the model incorporates long-memory structure relevant for ocean processes.
+
+    ### **2️⃣ Random Forest Regression**
+    A nonlinear machine learning method that uses **engineered features** including:
+    - SST lagged values (1–3 days)
+    - SST differences
+    - Rolling anomalies
+    - Wind anomalies
+    - Seasonal cycle encodings  
+    """)
 
     # ---------------------------------------------------------
     # Ensure df_imputed exists
@@ -1284,7 +1300,7 @@ elif choice == "Forecast Models":
     df_imputed = df_imputed.sort_values("date").set_index("date")
 
     # =====================================================
-    # 1. Autoregressive Model
+    # 1. AUTOREGRESSIVE MODEL
     # =====================================================
     st.subheader("🔮 Autoregressive (AR) Model")
 
@@ -1293,106 +1309,124 @@ elif choice == "Forecast Models":
 
     sst = df_imputed["T_25"].dropna()
 
-    # train/test split
+    # 80/20 split
     n = len(sst)
     train_size = int(0.8 * n)
     sst_train = sst.iloc[:train_size]
     sst_test = sst.iloc[train_size:]
 
-    # Fit model
-    ar_model = AutoReg(sst_train, lags=365, old_names=False).fit()
+    st.markdown(f"""
+    **Training period:** {sst_train.index.min().date()} → {sst_train.index.max().date()}  
+    **Testing period:** {sst_test.index.min().date()} → {sst_test.index.max().date()}
+    """)
 
-    # Predict
+    # Fit AR model
+    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
+
+    # Predict test period only
     start = len(sst_train)
     end = start + len(sst_test) - 1
     ar_pred = ar_model.predict(start=start, end=end)
     ar_pred.index = sst_test.index
 
-    # Full-range prediction
-    ar_pred_full = ar_model.predict(start=0, end=len(sst) - 1)
-    ar_pred_full.index = sst.index
-
-    # Plot
-    fig_ar = go.Figure()
-    fig_ar.add_trace(go.Scatter(x=sst.index, y=sst, name="Actual SST"))
-    fig_ar.add_trace(
-        go.Scatter(x=ar_pred_full.index, y=ar_pred_full, name="AR Prediction")
-    )
-
-    fig_ar.update_layout(
-        title="AR Model Prediction Over Full SST Record",
-        xaxis_title="Date",
-        yaxis_title="SST (°C)",
-        template="plotly_white",
-    )
-    st.plotly_chart(fig_ar, use_container_width=True)
+    # Plotting test period only
+    fig_ar, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(sst_test.index, sst_test, label="Actual SST", color="blue")
+    ax.plot(sst_test.index, ar_pred, label="AR Prediction", color="red")
+    ax.set_title("Autoregressive Model — SST Forecast (Test Period Only)")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("SST (°C)")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    st.pyplot(fig_ar)
 
     # Metrics
     rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
     mae = mean_absolute_error(sst_test, ar_pred)
     r2 = r2_score(sst_test, ar_pred)
 
-    st.write("### AR Model Performance")
-    st.write(f"**RMSE:** {rmse:.3f}")
-    st.write(f"**MAE:** {mae:.3f}")
-    st.write(f"**R²:** {r2:.3f}")
+    st.markdown(f"""
+    ### 📊 AR Model Performance (Test Set)
+    - **RMSE:** {rmse:.3f}  
+    - **MAE:** {mae:.3f}  
+    - **R² Score:** {r2:.3f}  
+    """)
+
+    st.markdown("""
+    ### 🔍 Interpretation
+    The AR model performs strongly because SST exhibits:
+    - High autocorrelation  
+    - Long memory in ocean processes  
+    - Smooth daily evolution  
+    """)
 
     # =====================================================
-    # 2. Random Forest Model
+    # 2. RANDOM FOREST MODEL
     # =====================================================
-    st.subheader("🌲 Random Forest Regression")
+    st.subheader("🌲 Random Forest Regression Model")
 
-    from sklearn.ensemble import RandomForestRegressor
-    from sklearn.preprocessing import StandardScaler
+    st.markdown("""
+    This model uses **engineered features** created in the Anomalies tab.  
+    We evaluate its ability to predict **actual SST (T_25)**.
+    """)
 
-    # Prepare feature matrix
-    df_feat = df_imputed.copy()
-    df_feat["T_25_anom"] = df_feat["T_25"] - df_feat["T_25"].rolling(30).mean()
-    df_feat["T_25_anom"] = df_feat["T_25_anom"].fillna(0)
+    # Use your actual engineered df_model
+    # df_model must already exist if user opened previous tab
+    if "df_model" in st.session_state:
+        df_model = st.session_state["df_model"].copy()
+    else:
+        st.error(
+            "Feature-engineered dataset not found. Please visit the **ENSO Anomalies** tab first."
+        )
+        st.stop()
 
-    # Lag features
-    for lag in [1, 2, 3]:
-        df_feat[f"T_25_lag{lag}"] = df_feat["T_25"].shift(lag)
+    X = df_model[X.columns]
+    y = df_model["T_25"]
 
-    df_feat = df_feat.dropna()
-
-    features = ["T_25_lag1", "T_25_lag2", "T_25_lag3"]
-    X = df_feat[features]
-    y = df_feat["T_25"]
-
-    # Train/test split
-    n = len(df_feat)
+    n = len(X)
     train_size = int(0.8 * n)
+
     X_train, X_test = X.iloc[:train_size], X.iloc[train_size:]
     y_train, y_test = y.iloc[:train_size], y.iloc[train_size:]
 
-    # Train RF model
     rf = RandomForestRegressor(n_estimators=300, random_state=42)
     rf.fit(X_train, y_train)
     rf_pred = rf.predict(X_test)
+
+    # Plot RF predictions over test period
+    fig_rf, ax = plt.subplots(figsize=(14, 6))
+    ax.plot(y_test.index, y_test, label="Actual SST", color="blue")
+    ax.plot(y_test.index, rf_pred, label="RF Prediction", color="red")
+    ax.set_title("Random Forest — SST Forecast (Test Period Only)")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("SST (°C)")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    st.pyplot(fig_rf)
 
     # Metrics
     rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
     mae_rf = mean_absolute_error(y_test, rf_pred)
     r2_rf = r2_score(y_test, rf_pred)
 
-    st.write("### Random Forest Performance")
-    st.write(f"**RMSE:** {rmse_rf:.3f}")
-    st.write(f"**MAE:** {mae_rf:.3f}")
-    st.write(f"**R²:** {r2_rf:.3f}")
+    st.markdown(f"""
+    ### 📊 Random Forest Performance (Test Set)
+    - **RMSE:** {rmse_rf:.3f}  
+    - **MAE:** {mae_rf:.3f}  
+    - **R² Score:** {r2_rf:.3f}  
+    """)
 
-    # Plot
-    fig_rf = go.Figure()
-    fig_rf.add_trace(go.Scatter(x=y_test.index, y=y_test, name="Actual"))
-    fig_rf.add_trace(go.Scatter(x=y_test.index, y=rf_pred, name="RF Prediction"))
+    st.markdown("""
+    ### 🔍 Interpretation
+    The Random Forest captures:
+    - Nonlinear interactions  
+    - Wind-driven contributions to SST  
+    - Seasonal effects via sin/cos encodings  
 
-    fig_rf.update_layout(
-        title="Random Forest: Actual vs Predicted SST",
-        xaxis_title="Date",
-        yaxis_title="SST (°C)",
-        template="plotly_white",
-    )
-    st.plotly_chart(fig_rf, use_container_width=True)
+    It often outperforms linear models but may smooth sharp transitions.
+    """)
+
+    st.success("Forecasting models evaluated successfully.")
 
 
 # =====================================================
