@@ -918,9 +918,9 @@ The regression lines help confirm dominant linear tendencies.
         st.plotly_chart(fig2, use_container_width=True)
 
     scatter_local_style("AT_21", "T_25")
-    scatter_local_style("RH_910", "T_25")
-    scatter_local_style("WU_422", "T_25")
-    scatter_local_style("WV_423", "T_25")
+    # scatter_local_style("RH_910", "T_25")
+    # scatter_local_style("WU_422", "T_25")
+    # scatter_local_style("WV_423", "T_25")
 
     st.markdown("""
 ### 🔍 Interpretation
