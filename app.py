@@ -326,8 +326,7 @@ elif choice == "Missingness":
     # =====================================================
     with st.expander("🌡 Missingness Heatmap"):
         st.markdown("""
-        The heatmap below shows missingness over time  
-        (**yellow = missing**, **dark = present**).
+        The heatmap below shows missingness over time
         """)
 
         cols_for_heatmap = [c for c in df.columns if c not in ["year", "month"]]
@@ -375,7 +374,6 @@ elif choice == "Missingness":
     st.markdown("""
     This section uses **Iterative Imputation** with a **Random Forest model**.
     Each variable with missing data is predicted using all other available variables.
-    
     This method handles nonlinear relationships and is well-suited for climate data.
     """)
 
@@ -407,14 +405,11 @@ elif choice == "Missingness":
     if "ANOM" in columns_to_impute:
         columns_to_impute.remove("ANOM")
 
-    st.write("### Variables selected for imputation:")
-    st.write(columns_to_impute)
-
     # ---------------------------------------------------------
     # Step 2 — Run Imputation
     # ---------------------------------------------------------
     if st.button("Run Imputation"):
-        st.info("⏳ Imputation in progress... This may take **10–30 seconds**.")
+        st.info("⏳ Imputation in progress... This may take **around 2 minutes**.")
 
         with st.spinner("Running Random Forest MICE imputation..."):
             # Enable IterativeImputer
