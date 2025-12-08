@@ -1265,203 +1265,132 @@ Features represent ENSO memory, momentum, seasonality, and wind forcing.
 # Tab 6: Forecast Models
 # =====================================================
 elif choice == "Forecast Models":
-    st.header("🔮 Forecasting Sea Surface Temperature (SST)")
+    st.header("📈 Forecasting Models for SST")
 
-    st.markdown("""
-This tab introduces two forecasting approaches:
-
-### 🌊 Model 1 — AutoRegressive (AR)
-Uses only **past SST values**.
-
-### 🌳 Model 2 — Random Forest Regression
-Uses **feature-engineered predictors** (lags, rolling means, anomalies).
-""")
-
-    # --------------------------------------------------
-    # Load dataset
-    # --------------------------------------------------
+    # ---------------------------------------------------------
+    # Ensure df_imputed exists
+    # ---------------------------------------------------------
     if "df" in st.session_state:
-        df_modeling = st.session_state["df"].copy()
-        st.success("Using imputed dataset ✔")
+        df_imputed = st.session_state["df"].copy()
+        st.info("Using imputed dataset for modeling ✔")
     else:
-        st.warning("Imputed dataset not found — using original dataset.")
-        df_modeling = df.copy()
+        df_imputed = df.copy()
+        st.warning("Using original dataset (imputation not performed).")
 
-    # Ensure datetime index
-    df_modeling["date"] = pd.to_datetime(df_modeling["date"], errors="coerce")
-    df_modeling = df_modeling.set_index("date").sort_index()
+    # ---------------------------------------------------------
+    # Format datetime
+    # ---------------------------------------------------------
+    df_imputed["date"] = pd.to_datetime(df_imputed["date"], errors="coerce")
+    df_imputed = df_imputed.sort_values("date").set_index("date")
 
-    # Make sure SST exists
-    if "T_25" not in df_modeling.columns:
-        st.error("❌ SST column (T_25) is missing — cannot run forecast models.")
-        st.stop()
+    # =====================================================
+    # 1. Autoregressive Model
+    # =====================================================
+    st.subheader("🔮 Autoregressive (AR) Model")
 
-    # Extract SST series
-    sst = df_modeling["T_25"].dropna()
+    from statsmodels.tsa.ar_model import AutoReg
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
-    # --------------------------------------------------
-    # MODEL 1 — AutoRegressive (AR)
-    # --------------------------------------------------
-    st.subheader("📈 Model 1: AutoRegressive (AR) Forecast")
+    sst = df_imputed["T_25"].dropna()
 
-    # Split data
+    # train/test split
     n = len(sst)
-    if n < 1000:
-        st.error("❌ Not enough SST data for AR model.")
-        st.stop()
-
     train_size = int(0.8 * n)
     sst_train = sst.iloc[:train_size]
     sst_test = sst.iloc[train_size:]
 
-    # Fit AR — safe guard if lags too large
-    lag_size = min(5000, len(sst_train) // 2)
-
-    try:
-        ar_model = AutoReg(sst_train, lags=lag_size, old_names=False).fit()
-    except Exception as e:
-        st.error(f"❌ AR model failed to fit: {e}")
-        st.stop()
+    # Fit model
+    ar_model = AutoReg(sst_train, lags=365, old_names=False).fit()
 
     # Predict
     start = len(sst_train)
     end = start + len(sst_test) - 1
-
-    try:
-        ar_pred = ar_model.predict(start=start, end=end)
-    except:
-        st.error("❌ AR model prediction failed.")
-        st.stop()
-
+    ar_pred = ar_model.predict(start=start, end=end)
     ar_pred.index = sst_test.index
 
-    # Full series prediction
-    ar_full = ar_model.predict(start=0, end=len(sst) - 1)
-    ar_full.index = sst.index
+    # Full-range prediction
+    ar_pred_full = ar_model.predict(start=0, end=len(sst) - 1)
+    ar_pred_full.index = sst.index
+
+    # Plot
+    fig_ar = go.Figure()
+    fig_ar.add_trace(go.Scatter(x=sst.index, y=sst, name="Actual SST"))
+    fig_ar.add_trace(
+        go.Scatter(x=ar_pred_full.index, y=ar_pred_full, name="AR Prediction")
+    )
+
+    fig_ar.update_layout(
+        title="AR Model Prediction Over Full SST Record",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
+    )
+    st.plotly_chart(fig_ar, use_container_width=True)
 
     # Metrics
     rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
     mae = mean_absolute_error(sst_test, ar_pred)
     r2 = r2_score(sst_test, ar_pred)
 
-    st.markdown(f"""
-### 📊 AR Model Performance  
-- RMSE: **{rmse:.3f}**  
-- MAE: **{mae:.3f}**  
-- R²: **{r2:.3f}**  
-""")
+    st.write("### AR Model Performance")
+    st.write(f"**RMSE:** {rmse:.3f}")
+    st.write(f"**MAE:** {mae:.3f}")
+    st.write(f"**R²:** {r2:.3f}")
 
-    # Plot
-    fig_ar = go.Figure()
-    fig_ar.add_trace(go.Scatter(x=sst.index, y=sst, name="Actual SST"))
-    fig_ar.add_trace(
-        go.Scatter(x=ar_full.index, y=ar_full, name="AR Prediction", opacity=0.7)
-    )
-    fig_ar.update_layout(
-        title="AR Model Prediction (Full Series)", template="plotly_white", height=450
-    )
-    st.plotly_chart(fig_ar, use_container_width=True)
+    # =====================================================
+    # 2. Random Forest Model
+    # =====================================================
+    st.subheader("🌲 Random Forest Regression")
 
-    # --------------------------------------------------
-    # MODEL 2 — Random Forest (Feature-Based)
-    # --------------------------------------------------
-    st.subheader("🌳 Model 2: Random Forest Regression")
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.preprocessing import StandardScaler
 
-    # Recompute anomalies (safe)
-    df_feat = df_modeling.copy()
-    required_vars = ["T_25", "AT_21", "WU_422", "WV_423"]
+    # Prepare feature matrix
+    df_feat = df_imputed.copy()
+    df_feat["T_25_anom"] = df_feat["T_25"] - df_feat["T_25"].rolling(30).mean()
+    df_feat["T_25_anom"] = df_feat["T_25_anom"].fillna(0)
 
-    for var in required_vars:
-        if var not in df_feat.columns:
-            st.error(f"❌ Missing variable: {var} — Random Forest model cannot run.")
-            st.stop()
-
-        clim = df_feat[var].groupby(df_feat.index.month).transform("mean")
-        df_feat[f"{var}_anom"] = df_feat[var] - clim
-
-    # Feature engineering
-    df_feat["T_25_diff"] = df_feat["T_25"].diff()
-    df_feat["T_25_anom_roll3"] = df_feat["T_25_anom"].rolling(3).mean()
-
+    # Lag features
     for lag in [1, 2, 3]:
-        df_feat[f"T_25_anom_lag{lag}"] = df_feat["T_25_anom"].shift(lag)
-
-    df_feat["month_sin"] = np.sin(2 * np.pi * df_feat.index.month / 12)
-    df_feat["month_cos"] = np.cos(2 * np.pi * df_feat.index.month / 12)
-
-    df_feat["wind_speed_anom"] = np.sqrt(
-        df_feat["WU_422_anom"] ** 2 + df_feat["WV_423_anom"] ** 2
-    )
+        df_feat[f"T_25_lag{lag}"] = df_feat["T_25"].shift(lag)
 
     df_feat = df_feat.dropna()
 
-    # Prepare ML matrix
-    features = [
-        "T_25_anom_lag1",
-        "T_25_anom_lag2",
-        "T_25_anom_lag3",
-        "T_25_diff",
-        "T_25_anom_roll3",
-        "AT_21_anom",
-        "WU_422_anom",
-        "WV_423_anom",
-        "wind_speed_anom",
-        "month_sin",
-        "month_cos",
-    ]
-
-    # Check availability
-    missing_feats = [f for f in features if f not in df_feat.columns]
-    if missing_feats:
-        st.error(f"❌ Missing engineered features: {missing_feats}")
-        st.stop()
-
+    features = ["T_25_lag1", "T_25_lag2", "T_25_lag3"]
     X = df_feat[features]
     y = df_feat["T_25"]
 
-    if len(X) < 500:
-        st.error("❌ Not enough data for Random Forest after feature engineering.")
-        st.stop()
-
     # Train/test split
-    split = int(0.8 * len(X))
-    X_train, X_test = X.iloc[:split], X.iloc[split:]
-    y_train, y_test = y.iloc[:split], y.iloc[split:]
+    n = len(df_feat)
+    train_size = int(0.8 * n)
+    X_train, X_test = X.iloc[:train_size], X.iloc[train_size:]
+    y_train, y_test = y.iloc[:train_size], y.iloc[train_size:]
 
-    # Fit model
-    try:
-        rf = RandomForestRegressor(n_estimators=300, random_state=42)
-        rf.fit(X_train, y_train)
-        rf_pred = rf.predict(X_test)
-    except Exception as e:
-        st.error(f"❌ Random Forest model failed: {e}")
-        st.stop()
+    # Train RF model
+    rf = RandomForestRegressor(n_estimators=300, random_state=42)
+    rf.fit(X_train, y_train)
+    rf_pred = rf.predict(X_test)
 
     # Metrics
     rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
     mae_rf = mean_absolute_error(y_test, rf_pred)
     r2_rf = r2_score(y_test, rf_pred)
 
-    st.markdown(f"""
-### 📊 Random Forest Performance  
-- RMSE: **{rmse_rf:.3f}**  
-- MAE: **{mae_rf:.3f}**  
-- R²: **{r2_rf:.3f}**
-""")
+    st.write("### Random Forest Performance")
+    st.write(f"**RMSE:** {rmse_rf:.3f}")
+    st.write(f"**MAE:** {mae_rf:.3f}")
+    st.write(f"**R²:** {r2_rf:.3f}")
 
-    # Plot predictions
+    # Plot
     fig_rf = go.Figure()
-    fig_rf.add_trace(go.Scatter(x=y_test.index, y=y_test, name="Actual SST"))
-    fig_rf.add_trace(
-        go.Scatter(
-            x=y_test.index,
-            y=rf_pred,
-            name="Random Forest Prediction",
-            line=dict(color="red"),
-        )
-    )
+    fig_rf.add_trace(go.Scatter(x=y_test.index, y=y_test, name="Actual"))
+    fig_rf.add_trace(go.Scatter(x=y_test.index, y=rf_pred, name="RF Prediction"))
+
     fig_rf.update_layout(
-        title="Random Forest SST Prediction", template="plotly_white", height=450
+        title="Random Forest: Actual vs Predicted SST",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
     )
     st.plotly_chart(fig_rf, use_container_width=True)
 
