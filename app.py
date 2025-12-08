@@ -1268,151 +1268,114 @@ elif choice == "Forecast Models":
     st.header("🔮 Forecasting Sea Surface Temperature (SST)")
 
     st.markdown("""
-This tab compares **two very different forecasting approaches** applied to the  
-Sea Surface Temperature (SST) record at the TAO buoy:
+This tab introduces two forecasting approaches:
 
-### 🌊 **Model 1 — AutoRegressive (AR) Model**
-Uses **only past SST values** to predict future SST  
-(very common in classical time-series analysis).
+### 🌊 Model 1 — AutoRegressive (AR)
+Uses only **past SST values**.
 
-### 🌳 **Model 2 — Random Forest Regression**
-Uses **engineered features** from the ENSO tab  
-(lags, rolling anomalies, wind anomalies, seasonal cycle).
-
-These two models illustrate the difference between  
-a **pure time-series method** vs. a **feature-based machine-learning model**.
+### 🌳 Model 2 — Random Forest Regression
+Uses **feature-engineered predictors** (lags, rolling means, anomalies).
 """)
 
     # --------------------------------------------------
-    # 1. Load imputed dataset
+    # Load dataset
     # --------------------------------------------------
     if "df" in st.session_state:
         df_modeling = st.session_state["df"].copy()
-        st.success("Using imputed dataset for forecasting ✔")
+        st.success("Using imputed dataset ✔")
     else:
-        st.warning("Imputed data not found — using original dataset")
+        st.warning("Imputed dataset not found — using original dataset.")
         df_modeling = df.copy()
 
-    df_modeling["date"] = pd.to_datetime(df_modeling["date"])
+    # Ensure datetime index
+    df_modeling["date"] = pd.to_datetime(df_modeling["date"], errors="coerce")
     df_modeling = df_modeling.set_index("date").sort_index()
 
-    # =====================================================
-    # PART A — AutoRegressive Model (Raw SST)
-    # =====================================================
-    st.subheader("📈 Model 1: AutoRegressive (AR) Forecast of SST")
+    # Make sure SST exists
+    if "T_25" not in df_modeling.columns:
+        st.error("❌ SST column (T_25) is missing — cannot run forecast models.")
+        st.stop()
 
-    st.markdown("""
-This model predicts SST based **only on its own past values**:
-
-\[
-SST(t) = a_1 SST(t-1) + a_2 SST(t-2) + \dots + a_p SST(t-p)
-\]
-
-We use a large number of lags so the model can capture:
-- Long ENSO cycles (2–7 years),
-- Seasonal structure,
-- High-frequency ocean variability.
-""")
-
-    # Extract SST
+    # Extract SST series
     sst = df_modeling["T_25"].dropna()
 
-    # Train/test split
+    # --------------------------------------------------
+    # MODEL 1 — AutoRegressive (AR)
+    # --------------------------------------------------
+    st.subheader("📈 Model 1: AutoRegressive (AR) Forecast")
+
+    # Split data
     n = len(sst)
+    if n < 1000:
+        st.error("❌ Not enough SST data for AR model.")
+        st.stop()
+
     train_size = int(0.8 * n)
     sst_train = sst.iloc[:train_size]
     sst_test = sst.iloc[train_size:]
 
-    st.write(
-        f"Training: **{sst_train.index.min().date()} → {sst_train.index.max().date()}**"
-    )
-    st.write(
-        f"Testing : **{sst_test.index.min().date()} → {sst_test.index.max().date()}**"
-    )
+    # Fit AR — safe guard if lags too large
+    lag_size = min(5000, len(sst_train) // 2)
 
-    # Fit AR model
-    from statsmodels.tsa.ar_model import AutoReg
-    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    try:
+        ar_model = AutoReg(sst_train, lags=lag_size, old_names=False).fit()
+    except Exception as e:
+        st.error(f"❌ AR model failed to fit: {e}")
+        st.stop()
 
-    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
-
-    # Predict test period
+    # Predict
     start = len(sst_train)
     end = start + len(sst_test) - 1
-    ar_pred = ar_model.predict(start=start, end=end)
+
+    try:
+        ar_pred = ar_model.predict(start=start, end=end)
+    except:
+        st.error("❌ AR model prediction failed.")
+        st.stop()
+
     ar_pred.index = sst_test.index
 
-    # Predict full dataset
-    ar_pred_full = ar_model.predict(start=0, end=len(sst) - 1)
-    ar_pred_full.index = sst.index
+    # Full series prediction
+    ar_full = ar_model.predict(start=0, end=len(sst) - 1)
+    ar_full.index = sst.index
 
-    # Compute metrics
+    # Metrics
     rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
     mae = mean_absolute_error(sst_test, ar_pred)
     r2 = r2_score(sst_test, ar_pred)
 
     st.markdown(f"""
 ### 📊 AR Model Performance  
-- **RMSE:** {rmse:.3f}  
-- **MAE:** {mae:.3f}  
-- **R²:** {r2:.3f}
+- RMSE: **{rmse:.3f}**  
+- MAE: **{mae:.3f}**  
+- R²: **{r2:.3f}**  
 """)
 
     # Plot
     fig_ar = go.Figure()
     fig_ar.add_trace(go.Scatter(x=sst.index, y=sst, name="Actual SST"))
     fig_ar.add_trace(
-        go.Scatter(
-            x=ar_pred_full.index, y=ar_pred_full, name="AR Prediction", opacity=0.7
-        )
+        go.Scatter(x=ar_full.index, y=ar_full, name="AR Prediction", opacity=0.7)
     )
     fig_ar.update_layout(
-        title="AutoRegressive (AR) Prediction of SST (Full Dataset)",
-        xaxis_title="Date",
-        yaxis_title="SST (°C)",
-        template="plotly_white",
-        height=450,
+        title="AR Model Prediction (Full Series)", template="plotly_white", height=450
     )
     st.plotly_chart(fig_ar, use_container_width=True)
 
-    st.markdown("""
-### 🔍 Interpretation
-- The AR model captures **seasonal cycles**, **ENSO cycles**, and long-term variability.
-- However, because it uses **only SST**, it cannot use:
-  - winds  
-  - air temperature  
-  - subsurface structure  
-  - anomaly information  
-  - climate dynamics  
+    # --------------------------------------------------
+    # MODEL 2 — Random Forest (Feature-Based)
+    # --------------------------------------------------
+    st.subheader("🌳 Model 2: Random Forest Regression")
 
-This makes AR a **useful baseline**, but not a climate-aware forecast model.
-""")
-
-    # =====================================================
-    # PART B — Random Forest Regression using Engineered Features
-    # =====================================================
-    st.subheader("🌳 Model 2: Random Forest Regression (Feature-Based)")
-
-    st.markdown("""
-This model uses the **engineered features** created in the ENSO Anomalies tab:
-
-- SST anomaly lags (1, 2, 3 months)  
-- Rolling anomaly (3-month mean)  
-- SST differencing  
-- Air temperature anomaly  
-- Wind anomalies + wind magnitude  
-- Seasonal cycle encoded as sin/cos  
-
-This turns SST forecasting into a **supervised learning task**.
-""")
-
-    # ---------------------------
-    # Recreate engineered features
-    # ---------------------------
+    # Recompute anomalies (safe)
     df_feat = df_modeling.copy()
+    required_vars = ["T_25", "AT_21", "WU_422", "WV_423"]
 
-    # Anomalies
-    for var in ["T_25", "AT_21", "WU_422", "WV_423"]:
+    for var in required_vars:
+        if var not in df_feat.columns:
+            st.error(f"❌ Missing variable: {var} — Random Forest model cannot run.")
+            st.stop()
+
         clim = df_feat[var].groupby(df_feat.index.month).transform("mean")
         df_feat[f"{var}_anom"] = df_feat[var] - clim
 
@@ -1447,21 +1410,32 @@ This turns SST forecasting into a **supervised learning task**.
         "month_cos",
     ]
 
+    # Check availability
+    missing_feats = [f for f in features if f not in df_feat.columns]
+    if missing_feats:
+        st.error(f"❌ Missing engineered features: {missing_feats}")
+        st.stop()
+
     X = df_feat[features]
     y = df_feat["T_25"]
 
-    # Train-test split (time-aware)
+    if len(X) < 500:
+        st.error("❌ Not enough data for Random Forest after feature engineering.")
+        st.stop()
+
+    # Train/test split
     split = int(0.8 * len(X))
     X_train, X_test = X.iloc[:split], X.iloc[split:]
     y_train, y_test = y.iloc[:split], y.iloc[split:]
 
-    # Train RF
-    from sklearn.ensemble import RandomForestRegressor
-
-    rf = RandomForestRegressor(n_estimators=300, random_state=42)
-    rf.fit(X_train, y_train)
-
-    rf_pred = rf.predict(X_test)
+    # Fit model
+    try:
+        rf = RandomForestRegressor(n_estimators=300, random_state=42)
+        rf.fit(X_train, y_train)
+        rf_pred = rf.predict(X_test)
+    except Exception as e:
+        st.error(f"❌ Random Forest model failed: {e}")
+        st.stop()
 
     # Metrics
     rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
@@ -1470,45 +1444,26 @@ This turns SST forecasting into a **supervised learning task**.
 
     st.markdown(f"""
 ### 📊 Random Forest Performance  
-- **RMSE:** {rmse_rf:.3f}  
-- **MAE:** {mae_rf:.3f}  
-- **R²:** {r2_rf:.3f}
+- RMSE: **{rmse_rf:.3f}**  
+- MAE: **{mae_rf:.3f}**  
+- R²: **{r2_rf:.3f}**
 """)
 
-    # Plot RF predictions
+    # Plot predictions
     fig_rf = go.Figure()
-    fig_rf.add_trace(
-        go.Scatter(x=y_test.index, y=y_test, name="Actual SST", line=dict(color="blue"))
-    )
+    fig_rf.add_trace(go.Scatter(x=y_test.index, y=y_test, name="Actual SST"))
     fig_rf.add_trace(
         go.Scatter(
-            x=y_test.index, y=rf_pred, name="RF Prediction", line=dict(color="red")
+            x=y_test.index,
+            y=rf_pred,
+            name="Random Forest Prediction",
+            line=dict(color="red"),
         )
     )
     fig_rf.update_layout(
-        title="Random Forest: Actual vs Predicted SST",
-        xaxis_title="Date",
-        yaxis_title="SST (°C)",
-        template="plotly_white",
-        height=450,
+        title="Random Forest SST Prediction", template="plotly_white", height=450
     )
     st.plotly_chart(fig_rf, use_container_width=True)
-
-    st.markdown("""
-### 🔍 Interpretation
-- The Random Forest model typically outperforms the AR model because it uses  
-  **multiple climate indicators**, not just SST.
-- Lagged anomalies give the model **ENSO memory**.
-- Wind anomalies help capture **upwelling and mixing effects**.
-- Seasonal encoding allows the model to learn the **annual temperature cycle**.
-- This demonstrates the value of **feature engineering** in climate prediction.
-""")
-
-    # Feature importance
-    importances = pd.Series(rf.feature_importances_, index=features).sort_values()
-
-    st.subheader("📌 Feature Importance")
-    st.bar_chart(importances)
 
 
 # =====================================================
