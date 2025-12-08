@@ -776,32 +776,27 @@ This tab provides:
     ensuring stable regression line rendering in Streamlit.
     """)
 
-    def scatter_local_style(x_var, y_var, title_suffix=""):
-        # --- Create a SAFE 2-column dataframe exactly like your local code ---
-        df_two = df_corr[[x_var, y_var]].apply(pd.to_numeric, errors="coerce").dropna()
+    def scatter_local_style(x_var, y_var):
+        # ALWAYS create a clean 2-column frame
+        df_two = df_corr[[x_var, y_var]].copy()
+        df_two = df_two.apply(pd.to_numeric, errors="coerce").dropna()
 
-        # Debug (optional)
-        # st.write("Shape:", df_two.shape)
-
-        # --- Build plot EXACTLY like your local version ---
         fig = px.scatter(
             df_two,
             x=x_var,
             y=y_var,
             trendline="ols",
             trendline_color_override="red",
-            title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)} {title_suffix}",
+            title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
         )
-
-        fig.update_layout(plot_bgcolor="white", title_x=0.5)
 
         st.plotly_chart(fig, use_container_width=True)
 
-    # Call your local-style plots
-    scatter_local_style("AT_21", "T_25", "(Air Temp vs SST)")
-    scatter_local_style("RH_910", "T_25", "(Humidity vs SST)")
-    scatter_local_style("WU_422", "T_25", "(Zonal Wind vs SST)")
-    scatter_local_style("WV_423", "T_25", "(Meridional Wind vs SST)")
+    # IMPORTANT: call the function BEFORE any code that modifies df_corr
+    scatter_local_style("AT_21", "T_25")
+    scatter_local_style("RH_910", "T_25")
+    scatter_local_style("WU_422", "T_25")
+    scatter_local_style("WV_423", "T_25")
 
     # =====================================================
     # 🔸 ENSO-Colored Scatter Plots (no make_subplots)
