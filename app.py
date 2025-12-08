@@ -869,64 +869,81 @@ Strong correlations indicate tightly connected physical processes.
 """)
 
     # =====================================================
-    # 🔸 Scatterplots — robust version with stable trendlines
+    # 🔸 Scatterplots — manual regression (no Plotly trendline)
     # =====================================================
     st.subheader("🔸 Key Scatterplots with Regression Lines")
     st.markdown("""
 These scatterplots show how SST relates to selected atmospheric and oceanic variables.  
-The regression lines help confirm dominant linear tendencies.
+The red line is a **manual linear regression fit**, computed directly from the data.
 """)
 
-    def scatter_local_style(x_var, y_var):
+    def scatter_with_manual_reg(x_var, y_var):
+        # 1) Clean two-column DataFrame
         df_two = df_corr[[x_var, y_var]].copy()
         df_two = df_two.apply(pd.to_numeric, errors="coerce").dropna()
 
-        # Optional: reduce points for stability
+        # Optional downsampling for speed
         if len(df_two) > 8000:
             df_two = df_two.sample(8000, random_state=42)
 
-        # Create scatter+trendline
-        fig = px.scatter(
-            df_two,
-            x=x_var,
-            y=y_var,
-            opacity=0.65,
-            trendline="ols",
-            trendline_color_override="red",
-            title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
+        x = df_two[x_var].to_numpy()
+        y = df_two[y_var].to_numpy()
+
+        # 2) Manual linear regression (least squares)
+        slope, intercept = np.polyfit(x, y, 1)
+
+        x_line = np.linspace(x.min(), x.max(), 100)
+        y_line = slope * x_line + intercept
+
+        # 3) Build figure: scatter + fitted line
+        fig = go.Figure()
+
+        # Scatter points
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="markers",
+                name="Data",
+                marker=dict(size=4, opacity=0.5, color="rgba(30, 100, 160, 0.6)"),
+            )
         )
 
-        # ---- FIX: Rebuild figure with marker trace first, trendline second ----
-        marker_traces = [t for t in fig.data if getattr(t, "mode", "") == "markers"]
-        trend_traces = [t for t in fig.data if "line" in t]
+        # Regression line
+        fig.add_trace(
+            go.Scatter(
+                x=x_line,
+                y=y_line,
+                mode="lines",
+                name="Linear fit",
+                line=dict(color="red", width=2),
+            )
+        )
 
-        # Build final figure in correct order
-        fig2 = go.Figure()
+        fig.update_layout(
+            title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
+            xaxis_title=pretty_names.get(x_var, x_var),
+            yaxis_title=pretty_names.get(y_var, y_var),
+            template="plotly_white",
+            title_x=0.5,
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+            ),
+        )
 
-        # Add markers
-        for t in marker_traces:
-            t.marker.size = 5
-            fig2.add_trace(t)
+        st.plotly_chart(fig, use_container_width=True)
 
-        # Add trendlines AFTER markers
-        for t in trend_traces:
-            fig2.add_trace(t)
-
-        # Copy layout
-        fig2.update_layout(fig.layout)
-
-        st.plotly_chart(fig2, use_container_width=True)
-
-    scatter_local_style("AT_21", "T_25")
-    # scatter_local_style("RH_910", "T_25")
-    # scatter_local_style("WU_422", "T_25")
-    # scatter_local_style("WV_423", "T_25")
+    # Generate scatterplots
+    scatter_with_manual_reg("AT_21", "T_25")
+    scatter_with_manual_reg("RH_910", "T_25")
+    scatter_with_manual_reg("WU_422", "T_25")
+    scatter_with_manual_reg("WV_423", "T_25")
 
     st.markdown("""
 ### 🔍 Interpretation
-- **Air temperature vs SST** shows a near-perfect linear relationship.  
-- **Humidity vs SST** increases gradually — warm oceans evaporate more moisture.  
-- **Winds vs SST** appear noisy, as winds are influenced by pressure gradients and ENSO, not just temperature.  
+- **Air temperature vs SST** shows a near-perfect linear relationship, confirming strong ocean–atmosphere heat exchange.  
+- **Humidity vs SST** increases gradually — warm oceans evaporate more moisture into the lower atmosphere.  
+- **Wind components vs SST** are noisier, since winds respond to pressure gradients and ENSO-related circulation, not just local SST.  
 """)
 
     # =====================================================
