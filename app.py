@@ -61,10 +61,6 @@ through interactive visualizations and imputation tools.
     choice = st.radio("Navigate to:", menu)
 
 
-# =====================================================
-# Overview
-# =====================================================
-
 # =========================
 # Tab 1: Overview
 # =========================
@@ -85,6 +81,44 @@ if choice == "Overview":
     
     The goal of this app is to help investigate ocean–atmosphere coupling
     and ENSO dynamics over several decades.
+    """)
+
+    # --------------------------------------------------
+    # Dataset construction explanation
+    # --------------------------------------------------
+    st.markdown("""
+    ## 📑 How the Final Dataset Was Built
+
+    The dataset displayed in this app was created from **multiple raw TAO files**,  
+    originally containing measurements at different depths, variables, and time intervals  
+    (often hourly or irregular).
+
+    To create a clean, analysis-ready dataset:
+
+    ### **1️⃣ Merging multiple raw data tables**
+    Several TAO files were merged together using:
+    - **Date** as the joining key  
+    - Ensuring all variables for a given day appear in a single combined row  
+    - Handling station-specific inconsistencies and aligning timestamps  
+
+    ### **2️⃣ Daily aggregation**
+    Because the original measurements were **sub-daily**, each day's values were aggregated using:
+
+    **Daily Mean:**
+    ```python
+    daily_mean = df_raw.groupby("date").mean().reset_index()
+    ```
+    This produced **one representative value per variable per day**, reducing noise  
+    and ensuring compatibility with longer-term climate indices such as **ENSO (ANOM)**.
+
+    ### **3️⃣ Final cleaned dataset**
+    The resulting file (`daily_mean.csv`) contains:
+    - ~30 years of daily measurements  
+    - Fully aligned atmospheric + oceanic variables  
+    - Ready for anomaly computation, correlation analysis, and imputation  
+
+    This preprocessing step is essential because ENSO signals operate on **weekly-to-monthly**
+    scales rather than hourly variability.
     """)
 
     # -------------------------
