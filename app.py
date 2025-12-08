@@ -369,7 +369,7 @@ elif choice == "Missingness":
     # =====================================================
     # Tab 2b: RF-MICE Imputation
     # =====================================================
-    st.title("🤖 Random Forest MICE Imputation")
+    st.title("🌲 Random Forest MICE Imputation")
 
     st.markdown("""
     This section uses **Iterative Imputation** with a **Random Forest model**.
@@ -516,13 +516,10 @@ elif choice == "Missingness":
 elif choice == "Temporal Coverage":
     st.header("📆 Temporal Coverage & ENSO Influence")
     st.markdown("""
-This tab explores how **ocean and atmospheric variables evolve over time**,  
-with special emphasis on **ENSO (El Niño / La Niña)** impacts.
+This tab explores how **ocean and atmospheric variables evolve over time**, with special emphasis on **ENSO (El Niño / La Niña)** impacts.
 
 - 🔴 **El Niño** → warm anomalies  
 - 🔵 **La Niña** → cool anomalies  
-
-If you run the **RF-MICE Imputation**, this tab will automatically switch to the cleaned dataset.
 """)
 
     # --------------------------------------------------
@@ -585,18 +582,25 @@ If you run the **RF-MICE Imputation**, this tab will automatically switch to the
     # --------------------------------------------------
     st.subheader("🌊 Ocean Temperature at Multiple Depths Over Time")
 
-    # Keep only meaningful depth variables
-    depth_cols = [col for col in df.columns if col.startswith("temp_")]
-    depth_cols = [col for col in depth_cols if df[col].notna().sum() > 500]
+    ## Only include selected depths
+    depth_keep = [
+        "temp_10m",
+        "temp_50m",
+        "temp_100m",
+        "temp_150m",
+        "temp_200m",
+        "temp_250m",
+    ]
+    depth_cols = [col for col in depth_keep if col in df.columns]
 
     if len(depth_cols) == 0:
-        st.error("No usable depth-based temperature variables found.")
+        st.error("None of the selected depth variables are available in the dataset.")
     else:
         import itertools
 
         color_cycle = itertools.cycle(px.colors.sequential.Viridis)
 
-        depths = [int(col.split("_")[1].replace("m", "")) for col in depth_cols]
+        depths = [int(col.replace("temp_", "").replace("m", "")) for col in depth_cols]
 
         fig = go.Figure()
 
@@ -612,7 +616,7 @@ If you run the **RF-MICE Imputation**, this tab will automatically switch to the
             )
 
         fig.update_layout(
-            title="Sea Temperature Over Time at Multiple Depths",
+            title="Sea Temperature Over Time at Selected Depths",
             xaxis_title="Date",
             yaxis_title="Temperature (°C)",
             template="plotly_white",
