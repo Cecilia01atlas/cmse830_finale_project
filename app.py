@@ -943,40 +943,198 @@ separately by month. This highlights **seasonal structure** in the SST–air tem
 
 
 # =====================================================
-# Temperature Profiles
+# Tab: ENSO Anomalies
 # =====================================================
+elif choice == "ENSO Anomalies":
+    st.header("🌡 ENSO-Driven Climate Anomalies")
 
-elif choice == "Temperature Profiles":
-    st.header("🌡 Temperature at Multiple Depths")
+    st.markdown("""
+    This tab computes **climatological anomalies**, decomposes seasonal components,  
+    and extracts **feature-engineered predictors** related to ENSO behavior.
 
-    depth_cols = [c for c in df.columns if "temp_" in c]
+    **Goals of this tab:**
+    - Compute **monthly climatology** for SST, air temperature, and winds  
+    - Visualize **anomalies over time**  
+    - Produce an **SST anomaly heatmap**  
+    - Decompose SST into **trend, seasonal, residual** (STL decomposition)
+    - Create **feature-engineered variables** used for ENSO prediction models  
+    """)
 
-    st.subheader("📈 Temperature Over Time by Depth")
-    fig = go.Figure()
-    for col in depth_cols:
-        fig.add_trace(go.Scatter(x=df["date"], y=df[col], mode="lines", name=col))
-    fig.update_layout(template="plotly_white", height=500)
+    # --------------------------------------------------
+    # 1. Select dataset (use imputed if available)
+    # --------------------------------------------------
+    if "df" in st.session_state:
+        df_ano = st.session_state["df"].copy()
+        st.info("Using imputed dataset ✔")
+    else:
+        df_ano = df.copy()
+        st.warning("Using original dataset (no imputation detected).")
+
+    # --------------------------------------------------
+    # 2. Fix/format datetime index
+    # --------------------------------------------------
+    df_ano["date"] = pd.to_datetime(df_ano["date"], errors="coerce")
+    df_ano = df_ano.sort_values("date").set_index("date")
+
+    df_ano["month"] = df_ano.index.month
+    df_ano["year"] = df_ano.index.year
+
+    # --------------------------------------------------
+    # 3. Compute monthly climatological anomalies
+    # --------------------------------------------------
+    st.subheader("📉 Climatological Anomalies")
+
+    anomaly_vars = ["T_25", "AT_21", "WU_422", "WV_423"]
+
+    for var in anomaly_vars:
+        clim = df_ano.groupby("month")[var].transform("mean")
+        df_ano[f"{var}_anom"] = df_ano[var] - clim
+
+    st.success("Anomalies computed for SST, air temperature, and winds.")
+
+    # --------------------------------------------------
+    # 4. Plot SST anomaly time series
+    # --------------------------------------------------
+    st.subheader("📈 SST Anomalies Over Time")
+
+    fig = px.line(
+        df_ano,
+        y="T_25_anom",
+        title="Sea Surface Temperature (SST) Anomalies Over Time",
+        labels={"T_25_anom": "SST Anomaly (°C)"},
+    )
+    fig.update_layout(template="plotly_white", title_x=0.5)
     st.plotly_chart(fig, use_container_width=True)
 
-# =====================================================
-# ENSO Anomalies
-# =====================================================
+    # --------------------------------------------------
+    # 5. Monthly anomaly heatmap
+    # --------------------------------------------------
+    st.subheader("🔥 SST Anomaly Heatmap")
 
-elif choice == "ENSO Anomalies":
-    st.header("🌡 ENSO & Temperature Anomalies")
+    sst_heatmap = df_ano.pivot_table(
+        index="month",
+        columns="year",
+        values="T_25_anom",
+        aggfunc="mean",
+    )
 
-    if "ANOM" not in df.columns:
-        st.error("ENSO index (ANOM) missing from dataset!")
-    else:
-        df["sst_monthly_clim"] = df.groupby("month")["T_25"].transform("mean")
-        df["sst_anomaly"] = df["T_25"] - df["sst_monthly_clim"]
+    fig_heat = px.imshow(
+        sst_heatmap,
+        color_continuous_scale="RdBu_r",
+        zmin=-3,
+        zmax=3,
+        labels={"x": "Year", "y": "Month", "color": "SST Anomaly (°C)"},
+        title="Monthly SST Anomalies Heatmap",
+    )
+    fig_heat.update_layout(height=550, title_x=0.5)
+    st.plotly_chart(fig_heat, use_container_width=True)
 
-        fig = px.line(df, x="date", y="sst_anomaly", title="SST Anomaly Over Time")
-        st.plotly_chart(fig, use_container_width=True)
+    # --------------------------------------------------
+    # 6. STL decomposition
+    # --------------------------------------------------
+    from statsmodels.tsa.seasonal import STL
 
-        st.subheader("Scatter of SST Anomalies vs Air Temperature")
-        fig2 = px.scatter(df, x="sst_anomaly", y="AT_21", opacity=0.5, trendline="ols")
-        st.plotly_chart(fig2, use_container_width=True)
+    st.subheader("🔍 STL Decomposition of Monthly SST")
+
+    sst_monthly = df_ano["T_25"].resample("M").mean().dropna()
+    stl = STL(sst_monthly, period=12, robust=True).fit()
+
+    fig_stl, axs = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+
+    axs[0].plot(sst_monthly.index, sst_monthly, lw=1.2)
+    axs[0].set_title("Observed Monthly SST")
+
+    axs[1].plot(stl.trend.index, stl.trend, color="tab:blue")
+    axs[1].set_title("Trend")
+
+    axs[2].plot(stl.seasonal.index, stl.seasonal, color="tab:green")
+    axs[2].set_title("Seasonal Component")
+
+    axs[3].scatter(stl.resid.index, stl.resid, s=10, alpha=0.6)
+    axs[3].axhline(0, color="black", lw=0.7)
+    axs[3].set_title("Residual")
+
+    fig_stl.suptitle("STL Decomposition of SST", fontsize=15)
+    fig_stl.tight_layout(rect=[0, 0, 1, 0.97])
+
+    st.pyplot(fig_stl)
+
+    # --------------------------------------------------
+    # 7. Feature engineering
+    # --------------------------------------------------
+    st.subheader("🧪 Feature Engineering for Prediction Models")
+
+    st.markdown("""
+    The following engineered features were created to better model  
+    ENSO-driven variability and prepare the dataset for machine learning tasks:
+
+    **Features created:**
+    - `T_25_diff` → 1-step SST difference  
+    - `T_25_anom_roll3` → 3-month rolling anomaly  
+    - `T_25_anom_lag1/2/3` → lagged SST anomalies  
+    - `month_sin`, `month_cos` → seasonal encoding  
+    - `wind_speed_anom` → combined wind anomaly magnitude  
+    """)
+
+    df_feat = df_ano.copy()
+
+    # Differencing
+    df_feat["T_25_diff"] = df_feat["T_25"].diff()
+
+    # Rolling anomalies
+    df_feat["T_25_anom_roll3"] = df_feat["T_25_anom"].rolling(3).mean()
+
+    # Lag features
+    for lag in [1, 2, 3]:
+        df_feat[f"T_25_anom_lag{lag}"] = df_feat["T_25_anom"].shift(lag)
+
+    # Seasonal encoding
+    df_feat["month_sin"] = np.sin(2 * np.pi * df_feat["month"] / 12)
+    df_feat["month_cos"] = np.cos(2 * np.pi * df_feat["month"] / 12)
+
+    # Wind anomaly magnitude
+    df_feat["wind_speed_anom"] = np.sqrt(
+        df_feat["WU_422_anom"] ** 2 + df_feat["WV_423_anom"] ** 2
+    )
+
+    df_model = df_feat.dropna()
+
+    st.write("Preview of engineered dataset:")
+    st.dataframe(df_model.head())
+
+    # --------------------------------------------------
+    # 8. Feature matrix + scaling
+    # --------------------------------------------------
+    st.subheader("📦 Modeling Matrix (X, y)")
+
+    features = [
+        "T_25_anom_lag1",
+        "T_25_anom_lag2",
+        "T_25_anom_lag3",
+        "T_25_diff",
+        "T_25_anom_roll3",
+        "AT_21_anom",
+        "WU_422_anom",
+        "WV_423_anom",
+        "wind_speed_anom",
+        "month_sin",
+        "month_cos",
+    ]
+
+    from sklearn.preprocessing import StandardScaler
+
+    X = df_model[features]
+    y = df_model["T_25"]
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    st.success("Feature matrix successfully constructed and scaled.")
+
+    st.write("### Shapes:")
+    st.write("X:", X_scaled.shape)
+    st.write("y:", y.shape)
+
 
 # =====================================================
 # Conclusion
