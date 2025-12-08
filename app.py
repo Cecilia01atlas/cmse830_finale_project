@@ -11,8 +11,12 @@ import matplotlib.pyplot as plt
 # import seaborn as sns
 import plotly.express as px
 import plotly.graph_objs as go
+
 # import matplotlib.dates as mdates
 # from sklearn.linear_model import LinearRegression
+from statsmodels.tsa.ar_model import AutoReg
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
 
 # -------- Streamlit page config ----------
 st.set_page_config(
