@@ -890,8 +890,10 @@ The regression lines help confirm dominant linear tendencies.
             title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
         )
 
-        # 🔥 CRITICAL FIX — prevents trendline disappearing
-        fig.update_traces(simplify=False)
+        # 🔥 FIX: Only update scatter marker traces, NOT trendlines
+        fig.for_each_trace(
+            lambda t: t.update(simplify=False) if t.mode == "markers" else None
+        )
 
         st.plotly_chart(fig, use_container_width=True)
 
