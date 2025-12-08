@@ -1274,62 +1274,49 @@ This tab compares two forecasting approaches:
 
 ### **1️⃣ AutoRegressive (AR) Model**
 Uses past SST values to predict future SST.  
-Originally you attempted **AR(5000)**, which is computationally impossible inside Streamlit.  
-Instead, we use **AR(200)** and run it *only when you click a button* to prevent freezing.
+We run AR(200) lazily to avoid freezing the app.
 
 ### **2️⃣ Random Forest Regression**
-Uses engineered features (lags, rolling anomalies, winds, seasonal encodings) to predict SST.  
-This model is more flexible and handles nonlinear ENSO structure.
+Uses engineered features (lags, rolling anomalies, wind structure, seasonality).
 
-Both models are:
-- Trained on **80% of the timeline**
-- Evaluated on the **remaining 20% (test set)**  
-- Compared using: **RMSE, MAE, R²**
+Both models:
+- Train on **80%** of data  
+- Predict the remaining **20% (test set)**  
+- Report **RMSE, MAE, R²**
 """)
 
     # ----------------------------------------------------
-    # Preparation (safe)
+    # Safety: ensure imputation + anomalies were done
     # ----------------------------------------------------
     if "df" not in st.session_state:
+        st.error("Please run imputation first (Missingness tab).")
+        st.stop()
+
+    if "df_model" not in st.session_state:
         st.error(
-            "Please run imputation in the Missingness tab before using this model."
+            "Please visit the 'ENSO Anomalies' tab FIRST — it prepares the engineered features."
         )
         st.stop()
 
     df_imputed = st.session_state["df"].copy()
+    df_model = st.session_state["df_model"].copy()
 
-    # Use the same df_model constructed in the ENSO tab
-    try:
-        df_model = st.session_state["df_model"]
-    except:
-        st.error(
-            "❗ You must visit the 'ENSO Anomalies' tab first — it prepares the engineered features."
-        )
-        st.stop()
-
-    # Target variable
+    # Prepare SST series
     sst = df_imputed.set_index("date")["T_25"].dropna()
 
-    # Train/test split
+    # Split
     n = len(sst)
     train_size = int(0.8 * n)
     sst_train = sst.iloc[:train_size]
     sst_test = sst.iloc[train_size:]
 
-    # ----------------------------------------------------
-    # SECTION A: AutoRegressive Model (Lazy Loaded)
-    # ----------------------------------------------------
+    # ====================================================
+    # SECTION A — AutoRegressive Model
+    # ====================================================
     st.subheader("📘 AutoRegressive (AR) Model")
 
-    st.markdown("""
-The AR model forecasts SST using its **previous 200 days**.  
-This length captures seasonality without freezing Streamlit.
-
-➡️ Click the button below to run the AR model.
-""")
-
     if st.button("Run AR(200) Model"):
-        with st.spinner("Training AR model…"):
+        with st.spinner("Training AR model..."):
             from statsmodels.tsa.ar_model import AutoReg
             from sklearn.metrics import (
                 mean_squared_error,
@@ -1337,66 +1324,69 @@ This length captures seasonality without freezing Streamlit.
                 r2_score,
             )
 
-            # Fit AR model safely
-            try:
-                ar_model = AutoReg(sst_train, lags=200, old_names=False).fit()
-            except Exception as e:
-                st.error(f"AR model failed: {e}")
-                st.stop()
+            ar_model = AutoReg(sst_train, lags=200, old_names=False).fit()
 
-            # Predict test window
+            # Predict test set
             start = train_size
             end = start + len(sst_test) - 1
             ar_pred = ar_model.predict(start=start, end=end)
             ar_pred.index = sst_test.index
 
-        # ---- Plot test predictions ----
+            # Compute metrics
+            rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
+            mae = mean_absolute_error(sst_test, ar_pred)
+            r2 = r2_score(sst_test, ar_pred)
+
+            # Store results
+            st.session_state["AR_results"] = {
+                "pred": ar_pred,
+                "rmse": rmse,
+                "mae": mae,
+                "r2": r2,
+            }
+
+    # DISPLAY AR RESULTS IF THEY EXIST
+    if "AR_results" in st.session_state:
+        ar_res = st.session_state["AR_results"]
+
+        st.markdown("### 📉 AR(200) Results")
+
         fig_ar, ax = plt.subplots(figsize=(14, 5))
         ax.plot(sst_test.index, sst_test, label="Actual SST", color="blue")
-        ax.plot(ar_pred.index, ar_pred, label="AR(200) Prediction", color="red")
-        ax.set_title("AR(200) — Actual vs Predicted SST (Test Set Only)")
-        ax.set_ylabel("SST (°C)")
-        ax.legend()
+        ax.plot(
+            ar_res["pred"].index,
+            ar_res["pred"],
+            label="AR(200) Prediction",
+            color="red",
+        )
+        ax.set_title("AR(200) — Actual vs Predicted SST (Test Set)")
         ax.grid(True)
+        ax.legend()
         st.pyplot(fig_ar)
 
-        # ---- Metrics ----
-        rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
-        mae = mean_absolute_error(sst_test, ar_pred)
-        r2 = r2_score(sst_test, ar_pred)
-
         st.markdown(f"""
-        ### 📊 AR Model Performance (Test Set)
-        - **RMSE:** {rmse:.3f}  
-        - **MAE:** {mae:.3f}  
-        - **R²:** {r2:.3f}
+        **RMSE:** {ar_res["rmse"]:.3f}  
+        **MAE:** {ar_res["mae"]:.3f}  
+        **R²:**  {ar_res["r2"]:.3f}
         """)
 
     st.markdown("---")
 
-    # ----------------------------------------------------
-    # SECTION B: Random Forest Regression (Lazy Loaded)
-    # ----------------------------------------------------
+    # ====================================================
+    # SECTION B — Random Forest Regression
+    # ====================================================
     st.subheader("🌲 Random Forest SST Prediction")
 
-    st.markdown("""
-This model uses the engineered features (lags, anomalies, wind structure, seasonality)
-created in the **ENSO Anomalies** tab.
-
-➡️ Click to train the Random Forest model.
-""")
-
     if st.button("Run Random Forest Model"):
-        with st.spinner("Training Random Forest…"):
-            from sklearn.model_selection import train_test_split
+        with st.spinner("Training Random Forest..."):
             from sklearn.ensemble import RandomForestRegressor
+            from sklearn.model_selection import train_test_split
             from sklearn.metrics import (
                 mean_squared_error,
                 mean_absolute_error,
                 r2_score,
             )
 
-            # Features used
             features = [
                 "T_25_anom_lag1",
                 "T_25_anom_lag2",
@@ -1415,7 +1405,6 @@ created in the **ENSO Anomalies** tab.
             X = df_rf[features]
             y = df_rf["T_25"]
 
-            # Train/test split (same proportions as AR model)
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=0.2, shuffle=False
             )
@@ -1424,26 +1413,41 @@ created in the **ENSO Anomalies** tab.
             rf.fit(X_train, y_train)
             rf_pred = rf.predict(X_test)
 
-        # ---- Plot RF results ----
+            rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
+            mae_rf = mean_absolute_error(y_test, rf_pred)
+            r2_rf = r2_score(y_test, rf_pred)
+
+            # Store results
+            st.session_state["RF_results"] = {
+                "pred": rf_pred,
+                "y_test": y_test,
+                "rmse": rmse_rf,
+                "mae": mae_rf,
+                "r2": r2_rf,
+            }
+
+    # DISPLAY RF RESULTS IF THEY EXIST
+    if "RF_results" in st.session_state:
+        rf_res = st.session_state["RF_results"]
+
+        st.markdown("### 🌲 Random Forest Results")
+
         fig_rf, ax = plt.subplots(figsize=(14, 5))
-        ax.plot(y_test.index, y_test, label="Actual SST", color="blue")
-        ax.plot(y_test.index, rf_pred, label="RF Prediction", color="red")
+        ax.plot(
+            rf_res["y_test"].index, rf_res["y_test"], label="Actual SST", color="blue"
+        )
+        ax.plot(
+            rf_res["y_test"].index, rf_res["pred"], label="RF Prediction", color="red"
+        )
         ax.set_title("Random Forest — Actual vs Predicted SST (Test Set)")
-        ax.set_ylabel("SST (°C)")
         ax.grid(True)
         ax.legend()
         st.pyplot(fig_rf)
 
-        # ---- Metrics ----
-        rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
-        mae_rf = mean_absolute_error(y_test, rf_pred)
-        r2_rf = r2_score(y_test, rf_pred)
-
         st.markdown(f"""
-        ### 📊 Random Forest Performance (Test Set)
-        - **RMSE:** {rmse_rf:.3f}  
-        - **MAE:** {mae_rf:.3f}  
-        - **R²:** {r2_rf:.3f}
+        **RMSE:** {rf_res["rmse"]:.3f}  
+        **MAE:** {rf_res["mae"]:.3f}  
+        **R²:**  {rf_res["r2"]:.3f}
         """)
 
 
