@@ -881,27 +881,29 @@ The regression lines help confirm dominant linear tendencies.
         df_two = df_corr[[x_var, y_var]].copy()
         df_two = df_two.apply(pd.to_numeric, errors="coerce").dropna()
 
+        # Optional: reduce points slightly for stability
+        if len(df_two) > 8000:
+            df_two = df_two.sample(8000, random_state=42)
+
         fig = px.scatter(
             df_two,
             x=x_var,
             y=y_var,
+            opacity=0.65,
             trendline="ols",
             trendline_color_override="red",
             title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
         )
 
-        # 🔥 FIX: Only update scatter marker traces, NOT trendlines
-        fig.for_each_trace(
-            lambda t: t.update(simplify=False) if t.mode == "markers" else None
+        # ✔ Stable update: DO NOT use simplify
+        fig.update_traces(marker=dict(size=5))
+
+        # ✔ Force trendline to render *after* scatter layer
+        fig.data = tuple(
+            sorted(fig.data, key=lambda t: 0 if t.mode == "markers" else 1)
         )
 
         st.plotly_chart(fig, use_container_width=True)
-
-    # Generate scatterplots
-    scatter_local_style("AT_21", "T_25")
-    scatter_local_style("RH_910", "T_25")
-    scatter_local_style("WU_422", "T_25")
-    scatter_local_style("WV_423", "T_25")
 
     st.markdown("""
 ### 🔍 Interpretation
