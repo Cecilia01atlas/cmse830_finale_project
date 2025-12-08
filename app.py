@@ -45,6 +45,7 @@ menu = [
     "Temporal Coverage",
     "Correlation Study",
     "ENSO Anomalies",
+    "Forecast Models",
     "Conclusion",
 ]
 
@@ -1078,26 +1079,11 @@ ocean and atmosphere dynamics by computing:
     # --------------------------------------------------
     # 3. Compute monthly climatological anomalies
     # --------------------------------------------------
-    st.subheader("📉 Climatological Anomalies")
-
-    st.markdown("""
-To isolate true ENSO-driven variability, we remove the **mean seasonal cycle**
-for each variable. This produces *anomalies*, which are defined as:
-
-\[
-\text{Anomaly}(t) = \text{Value}(t) - \text{Average for that calendar month}
-\]
-
-This removes the normal warming/cooling cycle and reveals the ENSO signal.
-""")
-
     anomaly_vars = ["T_25", "AT_21", "WU_422", "WV_423"]
 
     for var in anomaly_vars:
         clim = df_ano.groupby("month")[var].transform("mean")
         df_ano[f"{var}_anom"] = df_ano[var] - clim
-
-    st.success("Computed anomalies for SST, air temperature, and winds ✔")
 
     # --------------------------------------------------
     # 4. SST anomaly time series
@@ -1105,8 +1091,7 @@ This removes the normal warming/cooling cycle and reveals the ENSO signal.
     st.subheader("📈 SST Anomalies Over Time")
 
     st.markdown("""
-This plot highlights periods of **positive SST anomalies** (El Niño warming)  
-and **negative anomalies** (La Niña cooling).  
+This plot highlights periods of **positive SST anomalies** (El Niño warming) and **negative anomalies** (La Niña cooling).  
 Removing the seasonal cycle reveals real climate signals instead of annual variations.
 """)
 
@@ -1270,6 +1255,256 @@ Features represent ENSO memory, momentum, seasonality, and wind forcing.
     st.write("### Shapes:")
     st.write("X:", X_scaled.shape)
     st.write("y:", y.shape)
+
+
+# =====================================================
+# Tab 6: Forecast Models
+# =====================================================
+elif choice == "Forecast Models":
+    st.header("🔮 Forecasting Sea Surface Temperature (SST)")
+
+    st.markdown("""
+This tab compares **two very different forecasting approaches** applied to the  
+Sea Surface Temperature (SST) record at the TAO buoy:
+
+### 🌊 **Model 1 — AutoRegressive (AR) Model**
+Uses **only past SST values** to predict future SST  
+(very common in classical time-series analysis).
+
+### 🌳 **Model 2 — Random Forest Regression**
+Uses **engineered features** from the ENSO tab  
+(lags, rolling anomalies, wind anomalies, seasonal cycle).
+
+These two models illustrate the difference between  
+a **pure time-series method** vs. a **feature-based machine-learning model**.
+""")
+
+    # --------------------------------------------------
+    # 1. Load imputed dataset
+    # --------------------------------------------------
+    if "df" in st.session_state:
+        df_modeling = st.session_state["df"].copy()
+        st.success("Using imputed dataset for forecasting ✔")
+    else:
+        st.warning("Imputed data not found — using original dataset")
+        df_modeling = df.copy()
+
+    df_modeling["date"] = pd.to_datetime(df_modeling["date"])
+    df_modeling = df_modeling.set_index("date").sort_index()
+
+    # =====================================================
+    # PART A — AutoRegressive Model (Raw SST)
+    # =====================================================
+    st.subheader("📈 Model 1: AutoRegressive (AR) Forecast of SST")
+
+    st.markdown("""
+This model predicts SST based **only on its own past values**:
+
+\[
+SST(t) = a_1 SST(t-1) + a_2 SST(t-2) + \dots + a_p SST(t-p)
+\]
+
+We use a large number of lags so the model can capture:
+- Long ENSO cycles (2–7 years),
+- Seasonal structure,
+- High-frequency ocean variability.
+""")
+
+    # Extract SST
+    sst = df_modeling["T_25"].dropna()
+
+    # Train/test split
+    n = len(sst)
+    train_size = int(0.8 * n)
+    sst_train = sst.iloc[:train_size]
+    sst_test = sst.iloc[train_size:]
+
+    st.write(
+        f"Training: **{sst_train.index.min().date()} → {sst_train.index.max().date()}**"
+    )
+    st.write(
+        f"Testing : **{sst_test.index.min().date()} → {sst_test.index.max().date()}**"
+    )
+
+    # Fit AR model
+    from statsmodels.tsa.ar_model import AutoReg
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
+
+    # Predict test period
+    start = len(sst_train)
+    end = start + len(sst_test) - 1
+    ar_pred = ar_model.predict(start=start, end=end)
+    ar_pred.index = sst_test.index
+
+    # Predict full dataset
+    ar_pred_full = ar_model.predict(start=0, end=len(sst) - 1)
+    ar_pred_full.index = sst.index
+
+    # Compute metrics
+    rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
+    mae = mean_absolute_error(sst_test, ar_pred)
+    r2 = r2_score(sst_test, ar_pred)
+
+    st.markdown(f"""
+### 📊 AR Model Performance  
+- **RMSE:** {rmse:.3f}  
+- **MAE:** {mae:.3f}  
+- **R²:** {r2:.3f}
+""")
+
+    # Plot
+    fig_ar = go.Figure()
+    fig_ar.add_trace(go.Scatter(x=sst.index, y=sst, name="Actual SST"))
+    fig_ar.add_trace(
+        go.Scatter(
+            x=ar_pred_full.index, y=ar_pred_full, name="AR Prediction", opacity=0.7
+        )
+    )
+    fig_ar.update_layout(
+        title="AutoRegressive (AR) Prediction of SST (Full Dataset)",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
+        height=450,
+    )
+    st.plotly_chart(fig_ar, use_container_width=True)
+
+    st.markdown("""
+### 🔍 Interpretation
+- The AR model captures **seasonal cycles**, **ENSO cycles**, and long-term variability.
+- However, because it uses **only SST**, it cannot use:
+  - winds  
+  - air temperature  
+  - subsurface structure  
+  - anomaly information  
+  - climate dynamics  
+
+This makes AR a **useful baseline**, but not a climate-aware forecast model.
+""")
+
+    # =====================================================
+    # PART B — Random Forest Regression using Engineered Features
+    # =====================================================
+    st.subheader("🌳 Model 2: Random Forest Regression (Feature-Based)")
+
+    st.markdown("""
+This model uses the **engineered features** created in the ENSO Anomalies tab:
+
+- SST anomaly lags (1, 2, 3 months)  
+- Rolling anomaly (3-month mean)  
+- SST differencing  
+- Air temperature anomaly  
+- Wind anomalies + wind magnitude  
+- Seasonal cycle encoded as sin/cos  
+
+This turns SST forecasting into a **supervised learning task**.
+""")
+
+    # ---------------------------
+    # Recreate engineered features
+    # ---------------------------
+    df_feat = df_modeling.copy()
+
+    # Anomalies
+    for var in ["T_25", "AT_21", "WU_422", "WV_423"]:
+        clim = df_feat[var].groupby(df_feat.index.month).transform("mean")
+        df_feat[f"{var}_anom"] = df_feat[var] - clim
+
+    # Feature engineering
+    df_feat["T_25_diff"] = df_feat["T_25"].diff()
+    df_feat["T_25_anom_roll3"] = df_feat["T_25_anom"].rolling(3).mean()
+
+    for lag in [1, 2, 3]:
+        df_feat[f"T_25_anom_lag{lag}"] = df_feat["T_25_anom"].shift(lag)
+
+    df_feat["month_sin"] = np.sin(2 * np.pi * df_feat.index.month / 12)
+    df_feat["month_cos"] = np.cos(2 * np.pi * df_feat.index.month / 12)
+
+    df_feat["wind_speed_anom"] = np.sqrt(
+        df_feat["WU_422_anom"] ** 2 + df_feat["WV_423_anom"] ** 2
+    )
+
+    df_feat = df_feat.dropna()
+
+    # Prepare ML matrix
+    features = [
+        "T_25_anom_lag1",
+        "T_25_anom_lag2",
+        "T_25_anom_lag3",
+        "T_25_diff",
+        "T_25_anom_roll3",
+        "AT_21_anom",
+        "WU_422_anom",
+        "WV_423_anom",
+        "wind_speed_anom",
+        "month_sin",
+        "month_cos",
+    ]
+
+    X = df_feat[features]
+    y = df_feat["T_25"]
+
+    # Train-test split (time-aware)
+    split = int(0.8 * len(X))
+    X_train, X_test = X.iloc[:split], X.iloc[split:]
+    y_train, y_test = y.iloc[:split], y.iloc[split:]
+
+    # Train RF
+    from sklearn.ensemble import RandomForestRegressor
+
+    rf = RandomForestRegressor(n_estimators=300, random_state=42)
+    rf.fit(X_train, y_train)
+
+    rf_pred = rf.predict(X_test)
+
+    # Metrics
+    rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
+    mae_rf = mean_absolute_error(y_test, rf_pred)
+    r2_rf = r2_score(y_test, rf_pred)
+
+    st.markdown(f"""
+### 📊 Random Forest Performance  
+- **RMSE:** {rmse_rf:.3f}  
+- **MAE:** {mae_rf:.3f}  
+- **R²:** {r2_rf:.3f}
+""")
+
+    # Plot RF predictions
+    fig_rf = go.Figure()
+    fig_rf.add_trace(
+        go.Scatter(x=y_test.index, y=y_test, name="Actual SST", line=dict(color="blue"))
+    )
+    fig_rf.add_trace(
+        go.Scatter(
+            x=y_test.index, y=rf_pred, name="RF Prediction", line=dict(color="red")
+        )
+    )
+    fig_rf.update_layout(
+        title="Random Forest: Actual vs Predicted SST",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
+        height=450,
+    )
+    st.plotly_chart(fig_rf, use_container_width=True)
+
+    st.markdown("""
+### 🔍 Interpretation
+- The Random Forest model typically outperforms the AR model because it uses  
+  **multiple climate indicators**, not just SST.
+- Lagged anomalies give the model **ENSO memory**.
+- Wind anomalies help capture **upwelling and mixing effects**.
+- Seasonal encoding allows the model to learn the **annual temperature cycle**.
+- This demonstrates the value of **feature engineering** in climate prediction.
+""")
+
+    # Feature importance
+    importances = pd.Series(rf.feature_importances_, index=features).sort_values()
+
+    st.subheader("📌 Feature Importance")
+    st.bar_chart(importances)
 
 
 # =====================================================
