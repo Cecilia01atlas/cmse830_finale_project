@@ -44,7 +44,6 @@ menu = [
     "Missingness",
     "Temporal Coverage",
     "Correlation Study",
-    "Temperature Profiles",
     "ENSO Anomalies",
     "Conclusion",
 ]
@@ -1047,19 +1046,18 @@ elif choice == "ENSO Anomalies":
     st.header("🌡 ENSO-Driven Climate Anomalies")
 
     st.markdown("""
-    This tab computes **climatological anomalies**, decomposes seasonal components,  
-    and extracts **feature-engineered predictors** related to ENSO behavior.
+This tab explores how **ENSO (El Niño–Southern Oscillation)** influences  
+ocean and atmosphere dynamics by computing:
 
-    **Goals of this tab:**
-    - Compute **monthly climatology** for SST, air temperature, and winds  
-    - Visualize **anomalies over time**  
-    - Produce an **SST anomaly heatmap**  
-    - Decompose SST into **trend, seasonal, residual** (STL decomposition)
-    - Create **feature-engineered variables** used for ENSO prediction models  
-    """)
+- 🌡 **Climatological anomalies** (SST, air temperature, winds)  
+- 🔥 **Monthly SST anomaly heatmap**  
+- 📈 **Time series of anomalies**  
+- 🧩 **STL decomposition** (trend, seasonal, residual)  
+- 🧪 **Feature engineering for ENSO prediction**  
+""")
 
     # --------------------------------------------------
-    # 1. Select dataset (use imputed if available)
+    # 1. Select dataset
     # --------------------------------------------------
     if "df" in st.session_state:
         df_ano = st.session_state["df"].copy()
@@ -1069,7 +1067,7 @@ elif choice == "ENSO Anomalies":
         st.warning("Using original dataset (no imputation detected).")
 
     # --------------------------------------------------
-    # 2. Fix/format datetime index
+    # 2. Date formatting
     # --------------------------------------------------
     df_ano["date"] = pd.to_datetime(df_ano["date"], errors="coerce")
     df_ano = df_ano.sort_values("date").set_index("date")
@@ -1082,32 +1080,57 @@ elif choice == "ENSO Anomalies":
     # --------------------------------------------------
     st.subheader("📉 Climatological Anomalies")
 
+    st.markdown("""
+To isolate true ENSO-driven variability, we remove the **mean seasonal cycle**
+for each variable. This produces *anomalies*, which are defined as:
+
+\[
+\text{Anomaly}(t) = \text{Value}(t) - \text{Average for that calendar month}
+\]
+
+This removes the normal warming/cooling cycle and reveals the ENSO signal.
+""")
+
     anomaly_vars = ["T_25", "AT_21", "WU_422", "WV_423"]
 
     for var in anomaly_vars:
         clim = df_ano.groupby("month")[var].transform("mean")
         df_ano[f"{var}_anom"] = df_ano[var] - clim
 
-    st.success("Anomalies computed for SST, air temperature, and winds.")
+    st.success("Computed anomalies for SST, air temperature, and winds ✔")
 
     # --------------------------------------------------
-    # 4. Plot SST anomaly time series
+    # 4. SST anomaly time series
     # --------------------------------------------------
     st.subheader("📈 SST Anomalies Over Time")
+
+    st.markdown("""
+This plot highlights periods of **positive SST anomalies** (El Niño warming)  
+and **negative anomalies** (La Niña cooling).  
+Removing the seasonal cycle reveals real climate signals instead of annual variations.
+""")
 
     fig = px.line(
         df_ano,
         y="T_25_anom",
-        title="Sea Surface Temperature (SST) Anomalies Over Time",
         labels={"T_25_anom": "SST Anomaly (°C)"},
+        title="Sea Surface Temperature (SST) Anomalies Over Time",
     )
     fig.update_layout(template="plotly_white", title_x=0.5)
     st.plotly_chart(fig, use_container_width=True)
 
     # --------------------------------------------------
-    # 5. Monthly anomaly heatmap
+    # 5. Monthly SST anomaly heatmap
     # --------------------------------------------------
-    st.subheader("🔥 SST Anomaly Heatmap")
+    st.subheader("🔥 Monthly SST Anomaly Heatmap")
+
+    st.markdown("""
+This heatmap shows **how warm or cool each month was**, relative to normal conditions.
+
+- 🔴 Red streaks = **El Niño warm anomalies**  
+- 🔵 Blue streaks = **La Niña cool anomalies**  
+- Vertical bands show multi-year ENSO events  
+""")
 
     sst_heatmap = df_ano.pivot_table(
         index="month",
@@ -1130,9 +1153,19 @@ elif choice == "ENSO Anomalies":
     # --------------------------------------------------
     # 6. STL decomposition
     # --------------------------------------------------
-    from statsmodels.tsa.seasonal import STL
-
     st.subheader("🔍 STL Decomposition of Monthly SST")
+
+    st.markdown("""
+STL decomposition separates SST into:
+
+- **Trend** — long-term warming pattern  
+- **Seasonal** — normal annual cycle  
+- **Residual** — ENSO-related variability and noise  
+
+This technique is widely used in climate analysis to isolate ENSO signals.
+""")
+
+    from statsmodels.tsa.seasonal import STL
 
     sst_monthly = df_ano["T_25"].resample("M").mean().dropna()
     stl = STL(sst_monthly, period=12, robust=True).fit()
@@ -1158,39 +1191,39 @@ elif choice == "ENSO Anomalies":
     st.pyplot(fig_stl)
 
     # --------------------------------------------------
-    # 7. Feature engineering
+    # 7. Feature engineering (clean, rewritten)
     # --------------------------------------------------
-    st.subheader("🧪 Feature Engineering for Prediction Models")
+    st.subheader("🧪 Feature Engineering for ENSO Prediction Models")
 
     st.markdown("""
-    The following engineered features were created to better model  
-    ENSO-driven variability and prepare the dataset for machine learning tasks:
+To build predictive ENSO or SST models, we engineer features that represent:
 
-    **Features created:**
-    - `T_25_diff` → 1-step SST difference  
-    - `T_25_anom_roll3` → 3-month rolling anomaly  
-    - `T_25_anom_lag1/2/3` → lagged SST anomalies  
-    - `month_sin`, `month_cos` → seasonal encoding  
-    - `wind_speed_anom` → combined wind anomaly magnitude  
-    """)
+- 🔁 **Persistence** (lagged anomalies)
+- 📉 **Recent changes** (SST differencing)
+- 🌊 **Low-frequency ENSO signal** (rolling anomalies)
+- 🧭 **Seasonality** (sin/cos encoding)
+- 💨 **Wind forcing** (combined wind anomaly magnitude)
+
+These features are widely used in operational ENSO forecasting research.
+""")
 
     df_feat = df_ano.copy()
 
-    # Differencing
+    # 1) First-difference of SST (short-term momentum)
     df_feat["T_25_diff"] = df_feat["T_25"].diff()
 
-    # Rolling anomalies
+    # 2) Rolling anomalies (ENSO smooth signal)
     df_feat["T_25_anom_roll3"] = df_feat["T_25_anom"].rolling(3).mean()
 
-    # Lag features
+    # 3) Lagged SST anomalies (ENSO persistence)
     for lag in [1, 2, 3]:
         df_feat[f"T_25_anom_lag{lag}"] = df_feat["T_25_anom"].shift(lag)
 
-    # Seasonal encoding
+    # 4) Seasonal encoding (continuous cycle)
     df_feat["month_sin"] = np.sin(2 * np.pi * df_feat["month"] / 12)
     df_feat["month_cos"] = np.cos(2 * np.pi * df_feat["month"] / 12)
 
-    # Wind anomaly magnitude
+    # 5) Wind anomaly magnitude
     df_feat["wind_speed_anom"] = np.sqrt(
         df_feat["WU_422_anom"] ** 2 + df_feat["WV_423_anom"] ** 2
     )
@@ -1201,9 +1234,14 @@ elif choice == "ENSO Anomalies":
     st.dataframe(df_model.head())
 
     # --------------------------------------------------
-    # 8. Feature matrix + scaling
+    # 8. Modeling matrix & scaling
     # --------------------------------------------------
     st.subheader("📦 Modeling Matrix (X, y)")
+
+    st.markdown("""
+Below is the feature matrix used for machine learning models.  
+Features represent ENSO memory, momentum, seasonality, and wind forcing.
+""")
 
     features = [
         "T_25_anom_lag1",
@@ -1227,7 +1265,7 @@ elif choice == "ENSO Anomalies":
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    st.success("Feature matrix successfully constructed and scaled.")
+    st.success("Feature matrix successfully constructed and scaled ✔")
 
     st.write("### Shapes:")
     st.write("X:", X_scaled.shape)
