@@ -881,10 +881,11 @@ The regression lines help confirm dominant linear tendencies.
         df_two = df_corr[[x_var, y_var]].copy()
         df_two = df_two.apply(pd.to_numeric, errors="coerce").dropna()
 
-        # Optional: reduce points slightly for stability
+        # Optional: reduce points for stability
         if len(df_two) > 8000:
             df_two = df_two.sample(8000, random_state=42)
 
+        # Create scatter+trendline
         fig = px.scatter(
             df_two,
             x=x_var,
@@ -895,15 +896,26 @@ The regression lines help confirm dominant linear tendencies.
             title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
         )
 
-        # ✔ Stable update: DO NOT use simplify
-        fig.update_traces(marker=dict(size=5))
+        # ---- FIX: Rebuild figure with marker trace first, trendline second ----
+        marker_traces = [t for t in fig.data if getattr(t, "mode", "") == "markers"]
+        trend_traces = [t for t in fig.data if "line" in t]
 
-        # ✔ Force trendline to render *after* scatter layer
-        fig.data = tuple(
-            sorted(fig.data, key=lambda t: 0 if t.mode == "markers" else 1)
-        )
+        # Build final figure in correct order
+        fig2 = go.Figure()
 
-        st.plotly_chart(fig, use_container_width=True)
+        # Add markers
+        for t in marker_traces:
+            t.marker.size = 5
+            fig2.add_trace(t)
+
+        # Add trendlines AFTER markers
+        for t in trend_traces:
+            fig2.add_trace(t)
+
+        # Copy layout
+        fig2.update_layout(fig.layout)
+
+        st.plotly_chart(fig2, use_container_width=True)
 
     scatter_local_style("AT_21", "T_25")
     scatter_local_style("RH_910", "T_25")
