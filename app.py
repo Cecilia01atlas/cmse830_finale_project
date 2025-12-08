@@ -905,17 +905,17 @@ The regression lines help confirm dominant linear tendencies.
 
         st.plotly_chart(fig, use_container_width=True)
 
+    scatter_local_style("AT_21", "T_25")
+    scatter_local_style("RH_910", "T_25")
+    scatter_local_style("WU_422", "T_25")
+    scatter_local_style("WV_423", "T_25")
+
     st.markdown("""
 ### 🔍 Interpretation
 - **Air temperature vs SST** shows a near-perfect linear relationship.  
 - **Humidity vs SST** increases gradually — warm oceans evaporate more moisture.  
 - **Winds vs SST** appear noisy, as winds are influenced by pressure gradients and ENSO, not just temperature.  
 """)
-
-    scatter_local_style("AT_21", "T_25")
-    scatter_local_style("RH_910", "T_25")
-    scatter_local_style("WU_422", "T_25")
-    scatter_local_style("WV_423", "T_25")
 
     # =====================================================
     # 🔸 ENSO-Colored Scatter Plots
