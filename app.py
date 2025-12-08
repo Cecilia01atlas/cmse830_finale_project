@@ -89,9 +89,7 @@ if choice == "Overview":
     st.markdown("""
     ## 📑 How the Final Dataset Was Built
 
-    The dataset displayed in this app was created from **multiple raw TAO files**,  
-    originally containing measurements at different depths, variables, and time intervals  
-    (often hourly or irregular).
+    The dataset displayed in this app was created from **multiple raw TAO files**, originally containing measurements at different depths, variables, and time intervals (often hourly or irregular).
 
     To create a clean, analysis-ready dataset:
 
@@ -108,8 +106,7 @@ if choice == "Overview":
     ```python
     daily_mean = df_raw.groupby("date").mean().reset_index()
     ```
-    This produced **one representative value per variable per day**, reducing noise  
-    and ensuring compatibility with longer-term climate indices such as **ENSO (ANOM)**.
+    This produced **one representative value per variable per day**, reducing noise and ensuring compatibility with longer-term climate indices such as **ENSO (ANOM)**.
 
     ### **3️⃣ Final cleaned dataset**
     The resulting file (`daily_mean.csv`) contains:
@@ -117,8 +114,7 @@ if choice == "Overview":
     - Fully aligned atmospheric + oceanic variables  
     - Ready for anomaly computation, correlation analysis, and imputation  
 
-    This preprocessing step is essential because ENSO signals operate on **weekly-to-monthly**
-    scales rather than hourly variability.
+    This preprocessing step is essential because ENSO signals operate on **weekly-to-monthly** scales rather than hourly variability.
     """)
 
     # -------------------------
@@ -147,6 +143,7 @@ if choice == "Overview":
             "RH_910": "Relative Humidity (%)",
             "WU_422": "Zonal Wind (m/s, west-east)",
             "WV_423": "Meridional Wind (m/s, south-north)",
+            "ClimAdjust": "Climatological adjustment applied to Sea Surface Temperature",
             "ANOM": "ENSO Niño 3.4 Index",
             # Depth temperatures (automatically handled below)
         }
