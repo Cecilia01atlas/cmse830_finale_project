@@ -582,7 +582,7 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
     # --------------------------------------------------
     st.subheader("🌊 Ocean Temperature at Multiple Depths Over Time")
 
-    ## Only include selected depths
+    # Only include selected depths
     depth_keep = [
         "temp_10m",
         "temp_50m",
@@ -592,6 +592,9 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
         "temp_250m",
     ]
     depth_cols = [col for col in depth_keep if col in df.columns]
+
+    # Filter to show only data from 1990+
+    df_depth = df[df["date"].dt.year >= 1990].copy()
 
     if len(depth_cols) == 0:
         st.error("None of the selected depth variables are available in the dataset.")
@@ -607,8 +610,8 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
         for col, depth in zip(depth_cols, depths):
             fig.add_trace(
                 go.Scatter(
-                    x=df["date"],
-                    y=df[col],
+                    x=df_depth["date"],
+                    y=df_depth[col],
                     mode="lines",
                     name=f"{depth} m",
                     line=dict(color=next(color_cycle), width=1.8),
@@ -616,7 +619,7 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
             )
 
         fig.update_layout(
-            title="Sea Temperature Over Time at Selected Depths",
+            title="Sea Temperature Over Time at Selected Depths (1990–Present)",
             xaxis_title="Date",
             yaxis_title="Temperature (°C)",
             template="plotly_white",
