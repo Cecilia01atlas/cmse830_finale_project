@@ -630,6 +630,33 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
 
         st.plotly_chart(fig, use_container_width=True)
 
+    st.markdown("""
+    ### 🔍 What This Plot Shows
+
+    The figure displays **ocean temperature variations over time** at six selected depths  
+    (**10 m, 50 m, 100 m, 150 m, 200 m, 250 m**) from **1990 to 2025**.
+
+    #### ✅ Key observations:
+
+    - **Surface and shallow waters (10–50 m)** show the **highest temperatures**  
+    (typically 26–30°C) and **strong seasonal cycles**, warming in mid-year and cooling at the beginning/end of each year.
+
+    - **Intermediate depths (100–150 m)** are cooler and show **muted seasonal variability**,  
+    but still respond to ENSO-driven vertical mixing.
+
+    - **Deep layers (200–250 m)** are the coldest (12–16°C) and exhibit the **smoothest, most stable signals**,  
+    as deeper waters are less influenced by short-term atmospheric forcing.
+
+    - **ENSO signals propagate downward**: during El Niño, warm anomalies can extend below 100 m,  
+    visible as periods where intermediate curves rise noticeably above their usual cycles.
+
+    - Despite natural variability, **the thermal stratification remains consistent**:  
+    warmer near the surface, cooler with depth.
+
+    Overall, the plot illustrates how the **upper ocean responds dynamically to climate variability**,  
+    while deeper layers act as a slower, more stable thermal reservoir.
+    """)
+
     # --------------------------------------------------
     # 5) Interactive Vertical Temperature Profile
     # --------------------------------------------------
@@ -673,7 +700,7 @@ This tab explores how **ocean and atmospheric variables evolve over time**, with
         )
 
         fig.update_layout(
-            title="Vertical Temperature Profile (Animated)",
+            title="",
             xaxis_title="Temperature (°C)",
             yaxis_title="Depth (m)",
             yaxis_autorange="reversed",
@@ -730,7 +757,6 @@ This tab provides:
 - 🔸 Clean **scatterplots with regression lines**  
 - 🔸 A **scatter-matrix** (pairwise relationships)  
 - 🔸 **ENSO-colored scatter plots** for key variables  
-- 🔸 A **binned SST vs Air Temperature** seasonal profile  
 """)
 
     # --------------------------------------------------
@@ -757,36 +783,46 @@ This tab provides:
         "temp_50m": "Temp @50m (°C)",
         "temp_100m": "Temp @100m (°C)",
         "temp_150m": "Temp @150m (°C)",
-        "temp_175m": "Temp @175m (°C)",
         "temp_200m": "Temp @200m (°C)",
         "temp_250m": "Temp @250m (°C)",
         "T_25": "Sea Surface Temp (SST, °C)",
     }
 
-    selected_features = list(pretty_names.keys())
+    # Default variables
+    default_vars = list(pretty_names.keys())
 
-    df_corr_numeric = df_corr[selected_features].apply(pd.to_numeric, errors="coerce")
-    df_corr_numeric = df_corr_numeric.dropna()
+    st.subheader("🔧 Select Variables for Correlation")
+    selected_features = st.multiselect(
+        "Choose variables to include:",
+        options=list(pretty_names.keys()),
+        default=default_vars,
+    )
+
+    if len(selected_features) < 2:
+        st.warning("Please select **at least two variables**.")
+        st.stop()
+
+    df_corr_numeric = (
+        df_corr[selected_features].apply(pd.to_numeric, errors="coerce").dropna()
+    )
 
     # =====================================================
     # 🔸 Correlation Heatmap
     # =====================================================
     st.subheader("🔸 Correlation Heatmap")
-    st.markdown(
-        "The heatmap below shows **Pearson correlations** between key ocean–atmosphere variables."
-    )
+    st.markdown("""
+The heatmap below shows **Pearson correlations** between key ocean–atmosphere variables.  
+Strong correlations indicate tightly connected physical processes.
+""")
 
     corr = df_corr_numeric.corr()
-    corr.index = [pretty_names[c] for c in corr.index]
-    corr.columns = [pretty_names[c] for c in corr.columns]
 
-    # Mask upper triangle
-    mask = np.zeros_like(corr, dtype=bool)
-    for i in range(corr.shape[0]):
-        for j in range(corr.shape[1]):
-            if j > i:
-                mask[i, j] = True
+    # rename to pretty labels
+    corr.index = [pretty_names.get(c, c) for c in corr.index]
+    corr.columns = [pretty_names.get(c, c) for c in corr.columns]
 
+    # mask upper triangle
+    mask = np.triu(np.ones_like(corr, dtype=bool), k=1)
     corr_masked = corr.mask(mask)
 
     fig_corr = go.Figure(
@@ -802,7 +838,7 @@ This tab provides:
         )
     )
 
-    # Numeric annotations
+    # numeric annotations
     for i in range(corr.shape[0]):
         for j in range(corr.shape[1]):
             if not mask[i, j]:
@@ -824,17 +860,24 @@ This tab provides:
 
     st.plotly_chart(fig_corr, use_container_width=True)
 
-    ## =====================================================
-    # 🔸 Scatterplots — using your EXACT working local code
+    # Interpretation
+    st.markdown("""
+### 🔍 Interpretation
+- **SST and air temperature** exhibit a **very strong correlation**, reflecting direct ocean–atmosphere heat exchange.  
+- **Subsurface temperatures** correlate strongly with SST, but the correlation weakens slightly with depth.  
+- **Winds** show weaker correlations because their variability is driven by seasonal and ENSO dynamics rather than SST alone.  
+""")
+
+    # =====================================================
+    # 🔸 Scatterplots — robust version with stable trendlines
     # =====================================================
     st.subheader("🔸 Key Scatterplots with Regression Lines")
     st.markdown("""
-    These scatterplots use the **exact same logic as your local debug version**,  
-    ensuring stable regression line rendering in Streamlit.
-    """)
+These scatterplots show how SST relates to selected atmospheric and oceanic variables.  
+The regression lines help confirm dominant linear tendencies.
+""")
 
     def scatter_local_style(x_var, y_var):
-        # ALWAYS create a clean 2-column frame
         df_two = df_corr[[x_var, y_var]].copy()
         df_two = df_two.apply(pd.to_numeric, errors="coerce").dropna()
 
@@ -847,26 +890,34 @@ This tab provides:
             title=f"{pretty_names.get(x_var, x_var)} vs {pretty_names.get(y_var, y_var)}",
         )
 
+        # 🔥 CRITICAL FIX — prevents trendline disappearing
+        fig.update_traces(simplify=False)
+
         st.plotly_chart(fig, use_container_width=True)
 
-    # IMPORTANT: call the function BEFORE any code that modifies df_corr
+    # Generate scatterplots
     scatter_local_style("AT_21", "T_25")
     scatter_local_style("RH_910", "T_25")
     scatter_local_style("WU_422", "T_25")
     scatter_local_style("WV_423", "T_25")
 
-    # =====================================================
-    # 🔸 ENSO-Colored Scatter Plots (no make_subplots)
-    # =====================================================
-    st.subheader("🔸 ENSO-Colored Scatter Plots")
-
-    if "ANOM" in df_corr.columns and not df_corr["ANOM"].isna().all():
-        st.markdown("""
-Here, each point is colored by the **ENSO index (ANOM)**,  
-showing how the relationship between SST and other variables changes during  
-El Niño (red) and La Niña (blue) periods.
+    st.markdown("""
+### 🔍 Interpretation
+- **Air temperature vs SST** shows a near-perfect linear relationship.  
+- **Humidity vs SST** increases gradually — warm oceans evaporate more moisture.  
+- **Winds vs SST** appear noisy, as winds are influenced by pressure gradients and ENSO, not just temperature.  
 """)
 
+    # =====================================================
+    # 🔸 ENSO-Colored Scatter Plots
+    # =====================================================
+    st.subheader("🔸 ENSO-Colored Scatter Plots")
+    st.markdown("""
+These plots highlight how ENSO phases influence the relationships between SST and other variables.  
+Red = **El Niño**, Blue = **La Niña**.
+""")
+
+    if "ANOM" in df_corr.columns and not df_corr["ANOM"].isna().all():
         vars_to_compare = ["AT_21", "RH_910", "WU_422", "WV_423"]
         cols = st.columns(2)
 
@@ -886,11 +937,16 @@ El Niño (red) and La Niña (blue) periods.
                     },
                     title=f"{pretty_names.get(var, var)} vs SST (ENSO-colored)",
                 )
-                fig.update_layout(
-                    template="plotly_white",
-                    title_x=0.5,
-                )
+                fig.update_layout(template="plotly_white", title_x=0.5)
                 st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("""
+### 🔍 ENSO Interpretation
+- During **El Niño**, SST and air temperature shift upward together.  
+- **La Niña** clusters reveal cooler SST and lower air temperature.  
+- Wind fields become more scattered, reflecting ENSO-driven circulation changes.  
+""")
+
     else:
         st.warning(
             "No ENSO index (`ANOM`) available — skipping ENSO-colored scatter plots."
@@ -901,8 +957,8 @@ El Niño (red) and La Niña (blue) periods.
     # =====================================================
     st.subheader("🔸 Pairwise Scatter Matrix")
     st.markdown("""
-The scatter matrix shows **all pairwise relationships** among a subset of variables,  
-with color indicating **air temperature**.
+The scatter matrix highlights joint variability among several variables.  
+Color indicates **air temperature**, helping reveal thermodynamic structure.
 """)
 
     scatter_features = [
@@ -928,79 +984,26 @@ with color indicating **air temperature**.
             opacity=0.45,
             title="Pairwise Relationships Between Ocean & Atmosphere Variables",
         )
-        fig_matrix.update_layout(
-            height=900,
-            title_x=0.5,
-            plot_bgcolor="white",
-        )
+
+        # improve readability
+        fig_matrix.update_traces(marker=dict(size=2))
+        fig_matrix.update_layout(height=900, title_x=0.5, plot_bgcolor="white")
+
         st.plotly_chart(fig_matrix, use_container_width=True)
+
+        st.markdown("""
+### 🔍 Interpretation
+- Ocean temperatures cluster tightly and show coherent seasonal structure.  
+- Atmospheric variables (humidity, winds) display greater spread.  
+- The matrix cleanly separates **thermodynamic variables** from **dynamic variables**.  
+""")
+
     else:
         st.warning("Not enough complete data to display the scatter matrix.")
 
-    # =====================================================
-    # 🔸 Binned SST vs Air Temperature
-    # =====================================================
-    st.subheader("🔸 Binned SST by Air Temperature")
-    st.markdown("""
-Air temperature is grouped into bins, and the **average SST** is computed in each bin,  
-separately by month. This highlights **seasonal structure** in the SST–air temperature relationship.
-""")
-
-    if "AT_21" in df_corr.columns and "T_25" in df_corr.columns:
-        df_corr = df_corr.copy()
-        df_corr["air_temp_bin"] = pd.cut(df_corr["AT_21"], bins=20)
-
-        avg_sst = (
-            df_corr.groupby(["air_temp_bin", "month"])["T_25"]
-            .mean()
-            .reset_index(name="avg_ss_temp")
-        )
-
-        month_labels = {
-            1: "Jan",
-            2: "Feb",
-            3: "Mar",
-            4: "Apr",
-            5: "May",
-            6: "Jun",
-            7: "Jul",
-            8: "Aug",
-            9: "Sep",
-            10: "Oct",
-            11: "Nov",
-            12: "Dec",
-        }
-        avg_sst["month_name"] = avg_sst["month"].map(month_labels)
-        avg_sst["air_temp_bin_str"] = avg_sst["air_temp_bin"].astype(str)
-
-        fig_binned = px.line(
-            avg_sst,
-            x="air_temp_bin_str",
-            y="avg_ss_temp",
-            color="month_name",
-            markers=True,
-            title="Average SST by Air Temperature Bin (Seasonal Pattern)",
-            labels={
-                "air_temp_bin_str": "Air Temperature Bin",
-                "avg_ss_temp": "Mean SST (°C)",
-                "month_name": "Month",
-            },
-        )
-
-        fig_binned.update_layout(
-            xaxis_tickangle=-45,
-            title_x=0.5,
-            plot_bgcolor="white",
-        )
-        st.plotly_chart(fig_binned, use_container_width=True)
-    else:
-        st.warning(
-            "AT_21 or T_25 is missing — cannot compute binned SST vs air temperature."
-        )
-
 
 # =====================================================
-# Tab: ENSO Anomalies
+# Tab 5: ENSO Anomalies
 # =====================================================
 elif choice == "ENSO Anomalies":
     st.header("🌡 ENSO-Driven Climate Anomalies")
