@@ -1455,10 +1455,6 @@ Both models:
 
     **Autoregressive (AR) Model**
 
-    RMSE: 0.813  
-    MAE: 0.677  
-    R²: -0.038  
-
     A negative R² means the AR model performs worse than a simple baseline that
     predicts the mean SST. The reason is that an AR model only uses past SST values
     to make predictions. However, real ocean temperatures are strongly influenced
@@ -1468,11 +1464,7 @@ Both models:
     not well-approximated as a purely autoregressive process, which leads to weak
     performance.
 
-    **Random Forest Model**
-
-    RMSE: 0.105  
-    MAE: 0.047  
-    R²: 0.983  
+    **Random Forest Model** 
 
     The Random Forest model performs much better because it uses many engineered
     features that describe important physical processes. These include lagged SST
