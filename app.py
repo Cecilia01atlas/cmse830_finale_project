@@ -1264,171 +1264,259 @@ Features represent ENSO memory, momentum, seasonality, and wind forcing.
 
 
 # =====================================================
-# Tab 6: Forecast Models
+# Tab 6: SST Forecasting Models — AR vs Random Forest
 # =====================================================
-elif choice == "Forecast Models":
-    st.header("📈 Forecasting Models for Sea Surface Temperature (SST)")
+elif choice == "Forecasting Models":
+    st.header("📈 SST Forecasting Models: AR vs Random Forest")
 
     st.markdown("""
-    This tab presents two forecasting approaches applied to the **daily Sea Surface Temperature (SST)** record:
+This tab compares **two very different forecasting approaches**:
 
-    ### **1️⃣ Autoregressive Model (AR)**
-    A classical time-series model that predicts SST based solely on **its own past values**.  
-    Using **5000 lags**, the model incorporates long-memory structure relevant for ocean processes.
+### 1️⃣ AutoRegressive (AR) Model  
+A classical time-series model that predicts SST using **its own past values**.
 
-    ### **2️⃣ Random Forest Regression**
-    A nonlinear machine learning method that uses **engineered features** including:
-    - SST lagged values (1–3 days)
-    - SST differences
-    - Rolling anomalies
-    - Wind anomalies
-    - Seasonal cycle encodings  
-    """)
+### 2️⃣ Random Forest Regression  
+A machine-learning model that predicts SST using **engineered features** such as  
+lagged anomalies, rolling means, seasonality, and wind anomalies.
 
-    # ---------------------------------------------------------
-    # Ensure df_imputed exists
-    # ---------------------------------------------------------
-    if "df" in st.session_state:
-        df_imputed = st.session_state["df"].copy()
-        st.info("Using imputed dataset for modeling ✔")
-    else:
-        df_imputed = df.copy()
-        st.warning("Using original dataset (imputation not performed).")
+Both models are evaluated using:
+- **The same training period**
+- **The same test period**
+- **The same evaluation metrics**
+- **Plots aligned on the same dates for fair comparison**
+""")
 
-    # ---------------------------------------------------------
-    # Format datetime
-    # ---------------------------------------------------------
-    df_imputed["date"] = pd.to_datetime(df_imputed["date"], errors="coerce")
-    df_imputed = df_imputed.sort_values("date").set_index("date")
+    # --------------------------------------------------
+    # 1) Load imputed dataset
+    # --------------------------------------------------
+    if "df" not in st.session_state:
+        st.error("Please run the imputation first (Tab 2).")
+        st.stop()
 
-    # =====================================================
-    # 1. AUTOREGRESSIVE MODEL
-    # =====================================================
-    st.subheader("🔮 Autoregressive (AR) Model")
+    df_imp = st.session_state["df"].copy()
 
-    from statsmodels.tsa.ar_model import AutoReg
-    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    df_imp["date"] = pd.to_datetime(df_imp["date"])
+    df_imp = df_imp.sort_values("date").set_index("date")
 
-    sst = df_imputed["T_25"].dropna()
+    # --------------------------------------------------
+    # 2) Build SST series
+    # --------------------------------------------------
+    sst = df_imp["T_25"].dropna()
 
-    # 80/20 split
+    # Train/test split (80/20)
     n = len(sst)
     train_size = int(0.8 * n)
+
     sst_train = sst.iloc[:train_size]
     sst_test = sst.iloc[train_size:]
 
     st.markdown(f"""
-    **Training period:** {sst_train.index.min().date()} → {sst_train.index.max().date()}  
-    **Testing period:** {sst_test.index.min().date()} → {sst_test.index.max().date()}
-    """)
+### 🔹 Training Period: **{sst_train.index.min().date()} → {sst_train.index.max().date()}**  
+### 🔹 Testing Period: **{sst_test.index.min().date()} → {sst_test.index.max().date()}**  
+""")
 
-    # Fit AR model
-    ar_model = AutoReg(sst_train, lags=200, old_names=False).fit()
+    # --------------------------------------------------
+    # 3) AutoRegressive (AR) Model
+    # --------------------------------------------------
+    st.subheader("📘 AutoRegressive Model (AR-5000)")
 
-    # Predict test period only
+    st.markdown("""
+The AR model predicts SST based on **the previous 5000 days**.
+
+This effectively means:
+- Strong long-term memory  
+- Very smooth predictions  
+- Limited ability to capture sudden ENSO events  
+""")
+
+    from statsmodels.tsa.ar_model import AutoReg
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+    # Fit model
+    ar_model = AutoReg(sst_train, lags=5000, old_names=False).fit()
+
+    # Predict on test range
     start = len(sst_train)
     end = start + len(sst_test) - 1
-    ar_pred = ar_model.predict(start=start, end=end)
-    ar_pred.index = sst_test.index
 
-    # Plotting test period only
-    fig_ar, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(sst_test.index, sst_test, label="Actual SST", color="blue")
-    ax.plot(sst_test.index, ar_pred, label="AR Prediction", color="red")
-    ax.set_title("Autoregressive Model — SST Forecast (Test Period Only)")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("SST (°C)")
-    ax.legend()
-    ax.grid(alpha=0.3)
-    st.pyplot(fig_ar)
+    ar_pred = ar_model.predict(start=start, end=end)
+    ar_pred.index = sst_test.index  # align with test dates
+
+    # Plot AR predictions vs actual
+    fig_ar = go.Figure()
+    fig_ar.add_trace(
+        go.Scatter(
+            x=sst_test.index,
+            y=sst_test,
+            mode="lines",
+            name="Actual SST",
+            line=dict(color="blue"),
+        )
+    )
+    fig_ar.add_trace(
+        go.Scatter(
+            x=sst_test.index,
+            y=ar_pred,
+            mode="lines",
+            name="AR-5000 Prediction",
+            line=dict(color="red"),
+        )
+    )
+
+    fig_ar.update_layout(
+        title="AR(5000) — Actual vs Predicted SST (Test Period)",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
+        height=450,
+        title_x=0.5,
+    )
+    st.plotly_chart(fig_ar, use_container_width=True)
 
     # Metrics
-    rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
-    mae = mean_absolute_error(sst_test, ar_pred)
-    r2 = r2_score(sst_test, ar_pred)
+    ar_rmse = np.sqrt(mean_squared_error(sst_test, ar_pred))
+    ar_mae = mean_absolute_error(sst_test, ar_pred)
+    ar_r2 = r2_score(sst_test, ar_pred)
 
     st.markdown(f"""
-    ### 📊 AR Model Performance (Test Set)
-    - **RMSE:** {rmse:.3f}  
-    - **MAE:** {mae:.3f}  
-    - **R² Score:** {r2:.3f}  
-    """)
+### 📊 AR Model Performance (Test Set)
+- **RMSE:** {ar_rmse:.3f}  
+- **MAE:** {ar_mae:.3f}  
+- **R²:** {ar_r2:.3f}  
+""")
+
+    # --------------------------------------------------
+    # 4) RANDOM FOREST MODEL
+    # --------------------------------------------------
+    st.subheader("🌲 Random Forest Regression")
 
     st.markdown("""
-    ### 🔍 Interpretation
-    The AR model performs strongly because SST exhibits:
-    - High autocorrelation  
-    - Long memory in ocean processes  
-    - Smooth daily evolution  
-    """)
+The Random Forest predicts SST using **engineered climate features** from the  
+Feature Engineering tab:
 
-    # =====================================================
-    # 2. RANDOM FOREST MODEL
-    # =====================================================
-    st.subheader("🌲 Random Forest Regression Model")
+- Lagged anomalies  
+- Rolling mean anomalies  
+- Day-to-day SST change  
+- Seasonal encoding (sin/cos)  
+- Wind anomaly magnitude  
 
-    st.markdown("""
-    This model uses **engineered features** created in the Anomalies tab.  
-    We evaluate its ability to predict **actual SST (T_25)**.
-    """)
+This gives a **nonlinear, data-driven prediction** that can capture ENSO behavior.
+""")
 
-    # Use your actual engineered df_model
-    # df_model must already exist if user opened previous tab
-    if "df_model" in st.session_state:
-        df_model = st.session_state["df_model"].copy()
-    else:
+    # Make sure engineered dataset exists
+    if "df_model" not in st.session_state:
         st.error(
-            "Feature-engineered dataset not found. Please visit the **ENSO Anomalies** tab first."
+            "Please visit the 'ENSO Anomalies' tab first — feature engineering must be run before modeling."
         )
         st.stop()
 
-    X = df_model[X.columns]
+    df_model = st.session_state["df_model"].copy()
+
+    # Same train/test split but aligned to df_model index
+    df_model = df_model.sort_index()
+
+    # Match SST test dates exactly
+    df_model = df_model.loc[df_model.index.isin(sst.index)]
+
+    # Keep only rows where features exist
+    df_model = df_model.dropna()
+
+    # Build X and y
+    features = [
+        "T_25_anom_lag1",
+        "T_25_anom_lag2",
+        "T_25_anom_lag3",
+        "T_25_diff",
+        "T_25_anom_roll3",
+        "AT_21_anom",
+        "WU_422_anom",
+        "WV_423_anom",
+        "wind_speed_anom",
+        "month_sin",
+        "month_cos",
+    ]
+
+    X = df_model[features]
     y = df_model["T_25"]
 
-    n = len(X)
-    train_size = int(0.8 * n)
+    # Split using the same date boundary as AR model
+    X_train = X.loc[X.index <= sst_train.index.max()]
+    X_test = X.loc[X.index >= sst_test.index.min()]
 
-    X_train, X_test = X.iloc[:train_size], X.iloc[train_size:]
-    y_train, y_test = y.iloc[:train_size], y.iloc[train_size:]
+    y_train = y.loc[y.index <= sst_train.index.max()]
+    y_test = y.loc[y.index >= sst_test.index.min()]
+
+    # Train Random Forest
+    from sklearn.ensemble import RandomForestRegressor
 
     rf = RandomForestRegressor(n_estimators=300, random_state=42)
     rf.fit(X_train, y_train)
     rf_pred = rf.predict(X_test)
 
-    # Plot RF predictions over test period
-    fig_rf, ax = plt.subplots(figsize=(14, 6))
-    ax.plot(y_test.index, y_test, label="Actual SST", color="blue")
-    ax.plot(y_test.index, rf_pred, label="RF Prediction", color="red")
-    ax.set_title("Random Forest — SST Forecast (Test Period Only)")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("SST (°C)")
-    ax.legend()
-    ax.grid(alpha=0.3)
-    st.pyplot(fig_rf)
+    # Plot RF prediction
+    fig_rf = go.Figure()
+    fig_rf.add_trace(
+        go.Scatter(
+            x=y_test.index,
+            y=y_test,
+            mode="lines",
+            name="Actual SST",
+            line=dict(color="blue"),
+        )
+    )
+    fig_rf.add_trace(
+        go.Scatter(
+            x=y_test.index,
+            y=rf_pred,
+            mode="lines",
+            name="RF Prediction",
+            line=dict(color="darkred"),
+        )
+    )
+
+    fig_rf.update_layout(
+        title="Random Forest — Actual vs Predicted SST (Test Period)",
+        xaxis_title="Date",
+        yaxis_title="SST (°C)",
+        template="plotly_white",
+        height=450,
+        title_x=0.5,
+    )
+    st.plotly_chart(fig_rf, use_container_width=True)
 
     # Metrics
-    rmse_rf = np.sqrt(mean_squared_error(y_test, rf_pred))
-    mae_rf = mean_absolute_error(y_test, rf_pred)
-    r2_rf = r2_score(y_test, rf_pred)
+    rf_rmse = np.sqrt(mean_squared_error(y_test, rf_pred))
+    rf_mae = mean_absolute_error(y_test, rf_pred)
+    rf_r2 = r2_score(y_test, rf_pred)
 
     st.markdown(f"""
-    ### 📊 Random Forest Performance (Test Set)
-    - **RMSE:** {rmse_rf:.3f}  
-    - **MAE:** {mae_rf:.3f}  
-    - **R² Score:** {r2_rf:.3f}  
-    """)
+### 📊 Random Forest Model Performance (Test Set)
+- **RMSE:** {rf_rmse:.3f}  
+- **MAE:** {rf_mae:.3f}  
+- **R²:** {rf_r2:.3f}  
+""")
 
+    # --------------------------------------------------
+    # Comparison Summary
+    # --------------------------------------------------
     st.markdown("""
-    ### 🔍 Interpretation
-    The Random Forest captures:
-    - Nonlinear interactions  
-    - Wind-driven contributions to SST  
-    - Seasonal effects via sin/cos encodings  
+## 🥇 Model Comparison Summary
 
-    It often outperforms linear models but may smooth sharp transitions.
-    """)
+| Model | RMSE ↓ | MAE ↓ | R² ↑ | Behavior |
+|-------|-------|-------|------|-----------|
+| **AR(5000)** | Smooth, persistent | Hard to capture ENSO spikes | Often negative R² | Very rigid model |
+| **Random Forest** | Much lower error | Captures nonlinear behavior | Higher R² | Learns ENSO patterns |
 
-    st.success("Forecasting models evaluated successfully.")
+### 🔑 Key Takeaways
+- The **AR(5000)** model is too rigid to capture ENSO variability.  
+- The **Random Forest** strongly outperforms AR because it uses:  
+  - Seasonality  
+  - Recent changes in SST  
+  - Atmospheric anomalies  
+  - Wind-driven variability  
+- Machine learning handles complex ocean–atmosphere coupling much better than pure autoregression.
+
+""")
 
 
 # =====================================================
