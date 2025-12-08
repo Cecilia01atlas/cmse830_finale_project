@@ -1266,7 +1266,7 @@ Features represent ENSO memory, momentum, seasonality, and wind forcing.
 # =====================================================
 # Tab 6: SST Prediction Models
 # =====================================================
-elif choice == "SForecast Models":
+elif choice == "Forecast Models":
     st.header("📈 Forecasting Sea Surface Temperature (SST)")
 
     st.markdown("""
