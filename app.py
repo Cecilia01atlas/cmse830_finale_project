@@ -1219,6 +1219,8 @@ These features are widely used in operational ENSO forecasting research.
 
     df_model = df_feat.dropna()
 
+    st.session_state["df_model"] = df_model.copy()
+
     st.write("Preview of engineered dataset:")
     st.dataframe(df_model.head())
 
@@ -1321,7 +1323,7 @@ elif choice == "Forecast Models":
     """)
 
     # Fit AR model
-    ar_model = AutoReg(sst_train, lags=1000, old_names=False).fit()
+    ar_model = AutoReg(sst_train, lags=200, old_names=False).fit()
 
     # Predict test period only
     start = len(sst_train)
