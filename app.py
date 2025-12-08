@@ -873,8 +873,7 @@ Strong correlations indicate tightly connected physical processes.
     # =====================================================
     st.subheader("🔸 Key Scatterplots with Regression Lines")
     st.markdown("""
-These scatterplots show how SST relates to selected atmospheric and oceanic variables.  
-The red line is a **manual linear regression fit**, computed directly from the data.
+These scatterplots show how SST relates to selected atmospheric and oceanic variables.
 """)
 
     def scatter_with_manual_reg(x_var, y_var):
@@ -1016,9 +1015,7 @@ Color indicates **air temperature**, helping reveal thermodynamic structure.
         fig_matrix = px.scatter_matrix(
             df_scatter,
             dimensions=list(df_scatter.columns),
-            color="Air Temperature (°C)"
-            if "Air Temperature (°C)" in df_scatter.columns
-            else None,
+            color_continuous_scale="RdBu_r",
             opacity=0.45,
             title="Pairwise Relationships Between Ocean & Atmosphere Variables",
         )
